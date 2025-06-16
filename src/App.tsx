@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from 'contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AuthPage } from '@/pages/AuthPage';
 import { GameModeSelection } from '@/pages/GameModeSelection';
 import { SoloGameCreation } from '@/pages/SoloGameCreation';

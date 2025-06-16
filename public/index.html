@@ -1,16 +1,23 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="Quantum Mastermind - Jeu de logique et de déduction avec fonctionnalités quantiques" />
+
+    <!-- Security headers via meta tags -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="DENY" />
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+
     <title>Quantum Mastermind</title>
-    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
 <noscript>Vous devez activer JavaScript pour utiliser cette application.</noscript>
 <div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import { Difficulty, DifficultyConfig, GameType, GameMode } from '@/types/game';
 
-export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     [Difficulty.EASY]: {
