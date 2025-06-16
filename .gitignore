@@ -1,0 +1,405 @@
+# ==================== NODE.JS / NPM ====================
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# Snowpack dependency directory (https://snowpack.dev/)
+web_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# ==================== REACT / CREATE-REACT-APP ====================
+# Production build
+build/
+dist/
+
+# Static files
+public/static/
+
+# CRA generated files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# React Storybook
+.out/
+.storybook-out/
+storybook-static/
+
+# ==================== TYPESCRIPT ====================
+# Compiled TypeScript files
+*.js.map
+*.d.ts.map
+
+# TypeScript incremental compilation cache
+*.tsbuildinfo
+
+# ==================== TESTING ====================
+# Jest
+coverage/
+__tests__/__snapshots__/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Cypress
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+# ==================== ENVIRONMENT / CONFIG ====================
+# Environment variables
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Local configuration
+config/local.json
+.vscode/settings.json
+
+# ==================== LOGS ====================
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime logs
+*.log.*
+*.out
+*.err
+
+# ==================== DOCKER ====================
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+# Docker volumes data
+data/
+volumes/
+
+# ==================== SYSTÈME D'EXPLOITATION ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ==================== ÉDITEURS / IDEs ====================
+# VSCode
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.template
+*.code-workspace
+
+# JetBrains IDEs (WebStorm, IntelliJ, etc.)
+.idea/
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+tags
+[._]*.un~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Nano
+*.save
+*.swp
+
+# ==================== AUTRES OUTILS ====================
+# Webpack
+.webpack/
+
+# Parcel
+.cache/
+.parcel-cache/
+
+# Next.js
+.next/
+out/
+
+# Nuxt.js
+.nuxt/
+
+# Gatsby
+.cache/
+public/
+
+# Vite
+dist/
+dist-ssr/
+*.local
+
+# Rollup
+.rollup.cache/
+
+# Svelte
+.svelte-kit/
+
+# ==================== SÉCURITÉ ====================
+# Clés privées et certificats
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Secrets
+secrets.json
+.secrets/
+
+# API Keys (patterns communs)
+*api-key*
+*secret*
+*token*
+.credentials
+
+# ==================== CACHE ====================
+# Various caches
+.cache/
+.temp/
+.tmp/
+*.tmp
+*.temp
+
+# Sass cache
+.sass-cache/
+
+# PostCSS cache
+.postcssrc.cache
+
+# ESLint cache
+.eslintcache
+
+# Prettier cache
+.prettiercache
+
+# ==================== SPÉCIFIQUE AU PROJET ====================
+# Documentation générée
+docs/build/
+docs/.vuepress/dist/
+
+# Fichiers de backup
+*.backup
+*.bak
+*.orig
+
+# Fichiers temporaires de l'éditeur
+*.tmp
+*.temp
+*~
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Fichiers de profiling
+*.cpuprofile
+*.heapprofile
+
+# ==================== MONITORING / ANALYTICS ====================
+# Sentry
+.sentryclirc
+
+# Bundle analyzer
+bundle-analyzer-report.html
+stats.json
+
+# Lighthouse
+lighthouse-results/
+
+# ==================== CI/CD ====================
+# Build artifacts
+artifacts/
+reports/
+
+# Deployment
+.deploy/
+.publish/
+
+# GitHub Actions (si utilisé)
+.github/workflows/secrets/
+
+# ==================== AUTRES ====================
+# Fichiers OS temporaires
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Fichiers de verrouillage temporaires
+*.lock
+!package-lock.json
+!yarn.lock
+
+# Fichiers de synchronisation cloud
+.dropbox
+.dropbox.attr
+.onedrive
+.icloud
+
+# Fichiers de base de données temporaires
+*.sqlite
+*.sqlite3
+*.db
+
+# Fichiers de session
+.session
+
+# Generated icons
+android-chrome-*.png
+apple-touch-icon*.png
+favicon*.png
+mstile-*.png
+safari-pinned-tab.svg
+
+# PWA
+workbox-*.js
+sw.js
+service-worker.js
+
+# ==================== EXCEPTIONS ====================
+# Garder certains fichiers importants
+!.gitkeep
+!.npmrc.example
+!.env.example
+!.env.template
+!.eslintrc.*
+!.prettierrc.*
+!tailwind.config.*
+!postcss.config.*
+!tsconfig.json
+!package.json
+!package-lock.json
+!yarn.lock
+!public/favicon.ico
+!public/manifest.json
+!public/robots.txt
