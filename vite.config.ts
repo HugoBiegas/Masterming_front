@@ -21,6 +21,11 @@ export default defineConfig({
         }
     },
 
+    // Configuration CSS pour PostCSS et Tailwind
+    css: {
+        postcss: './postcss.config.js',
+    },
+
     // Variables d'environnement sécurisées
     envPrefix: 'VITE_',
 
@@ -28,8 +33,12 @@ export default defineConfig({
     server: {
         port: 3000,
         host: true,
-        strictPort: true
+        strictPort: true,
+        open: true
     },
+
+    // Le dossier public pour les assets statiques
+    publicDir: 'public',
 
     // Configuration de build pour la production
     build: {

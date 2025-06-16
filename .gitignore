@@ -403,3 +403,4 @@ service-worker.js
 !public/favicon.ico
 !public/manifest.json
 !public/robots.txt
+package-lock.json

@@ -32,12 +32,32 @@ code {
     to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes slideOut {
+    from { transform: translateY(0) scale(1); opacity: 1; }
+    to { transform: translateY(-10px) scale(0.95); opacity: 0; }
+}
+
+@keyframes slideInFromTop {
+    from {
+        transform: translateY(-100px) scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
 .animate-fade-in {
     animation: fadeIn 0.3s ease-in-out;
 }
 
 .animate-slide-in {
-    animation: slideIn 0.3s ease-in-out;
+    animation: slideInFromTop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-slide-out {
+    animation: slideOut 0.3s ease-in-out forwards;
 }
 
 /* Styles pour les composants de jeu */

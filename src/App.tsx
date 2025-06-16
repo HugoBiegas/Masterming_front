@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 import { AuthPage } from '@/pages/AuthPage';
 import { GameModeSelection } from '@/pages/GameModeSelection';
 import { SoloGameCreation } from '@/pages/SoloGameCreation';
@@ -12,8 +13,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-                <LoadingSpinner size="lg" />
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center">
+                    <LoadingSpinner size="lg" />
+                    <p className="mt-4 text-gray-600">Chargement...</p>
+                </div>
             </div>
         );
     }
@@ -26,8 +30,11 @@ const AppRoutes: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-                <LoadingSpinner size="lg" />
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center">
+                    <LoadingSpinner size="lg" />
+                    <p className="mt-4 text-gray-600">Initialisation...</p>
+                </div>
             </div>
         );
     }
@@ -70,11 +77,13 @@ const AppRoutes: React.FC = () => {
 const App: React.FC = () => {
     return (
         <AuthProvider>
-            <Router>
-                <div className="App">
-                    <AppRoutes />
-                </div>
-            </Router>
+            <NotificationProvider>
+                <Router>
+                    <div className="App">
+                        <AppRoutes />
+                    </div>
+                </Router>
+            </NotificationProvider>
         </AuthProvider>
     );
 };
