@@ -19,6 +19,11 @@ export class GameService {
         return response.data;
     }
 
+    async startGame(gameId: string): Promise<Game> {
+        const response = await apiService.post<Game>(`/api/v1/games/${gameId}/start`);
+        return response.data;
+    }
+
     async makeAttempt(gameId: string, attempt: AttemptRequest): Promise<AttemptResult> {
         const response = await apiService.post<AttemptResult>(`/api/v1/games/${gameId}/attempt`, attempt);
         return response.data;

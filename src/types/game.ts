@@ -37,6 +37,7 @@ export interface DifficultyConfig {
     description: string;
 }
 
+// ✅ Interface corrigée selon l'API Postman
 export interface GameCreateRequest {
     game_type: GameType;
     game_mode: GameMode;
@@ -44,7 +45,7 @@ export interface GameCreateRequest {
     max_attempts?: number;
     time_limit?: number;
     max_players: number;
-    is_private: boolean;
+    is_public: boolean;  // ✅ Corrigé de "is_private" à "is_public"
     password?: string;
     room_code?: string;
     allow_spectators: boolean;

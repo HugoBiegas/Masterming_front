@@ -21,22 +21,32 @@ code {
     monospace;
 }
 
-/* Animations personnalisées */
+/* ===== ANIMATIONS PERSONNALISÉES ===== */
+
+/* Animations de base */
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
-@keyframes slideIn {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
 }
 
-@keyframes slideOut {
-    from { transform: translateY(0) scale(1); opacity: 1; }
-    to { transform: translateY(-10px) scale(0.95); opacity: 0; }
-}
-
+/* Animation d'entrée pour les toasts */
 @keyframes slideInFromTop {
     from {
         transform: translateY(-100px) scale(0.9);
@@ -48,19 +58,115 @@ code {
     }
 }
 
+/* Animation de sortie pour les toasts */
+@keyframes slideOutToTop {
+    from {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-50px) scale(0.95);
+        opacity: 0;
+    }
+}
+
+/* ✅ Animation spéciale pour le bouton de démarrage */
+@keyframes slideInFromTopBounce {
+    0% {
+        transform: translateY(-200px) scale(0.8);
+        opacity: 0;
+    }
+    50% {
+        transform: translateY(10px) scale(1.05);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* Animation de sortie pour le bouton de démarrage */
+@keyframes slideOutToTopFade {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-200px) scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* Animation alternative de slide in */
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Animation de slide out alternative */
+@keyframes slideOut {
+    from {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-10px) scale(0.95);
+        opacity: 0;
+    }
+}
+
+/* ✅ Animation de pulsation pour le bouton de démarrage */
+@keyframes startButtonPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 0 20px rgba(34, 197, 94, 0);
+        transform: scale(1.02);
+    }
+}
+
+/* ===== CLASSES UTILITAIRES ===== */
+
 .animate-fade-in {
     animation: fadeIn 0.3s ease-in-out;
 }
 
+.animate-fade-out {
+    animation: fadeOut 0.3s ease-in-out forwards;
+}
+
 .animate-slide-in {
-    animation: slideInFromTop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: slideInFromTopBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .animate-slide-out {
-    animation: slideOut 0.3s ease-in-out forwards;
+    animation: slideOutToTop 0.3s ease-in-out forwards;
 }
 
-/* Styles pour les composants de jeu */
+/* ✅ Classes spéciales pour le bouton de démarrage */
+.animate-start-button-in {
+    animation: slideInFromTopBounce 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-start-button-out {
+    animation: slideOutToTopFade 0.4s ease-in-out forwards;
+}
+
+.animate-start-button-pulse {
+    animation: startButtonPulse 2s infinite;
+}
+
+/* ===== STYLES POUR LES COMPOSANTS DE JEU ===== */
+
 .game-board-position {
     transition: all 0.2s ease-in-out;
 }
@@ -77,10 +183,193 @@ code {
     transform: scale(1.1);
 }
 
-/* Responsive design */
+/* ===== STYLES POUR LES TOASTS ===== */
+
+/* Container des toasts */
+.toast-container {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    max-width: 28rem;
+    width: 100%;
+    padding: 0 1rem;
+    pointer-events: none;
+}
+
+/* Styles individuels pour les toasts */
+.toast {
+    pointer-events: auto;
+    margin-bottom: 0.75rem;
+    width: 100%;
+}
+
+/* Animation spéciale pour les toasts empilés */
+.toast:nth-child(1) { transform: translateY(0px) scale(1); z-index: 10; }
+.toast:nth-child(2) { transform: translateY(4px) scale(0.98); z-index: 9; }
+.toast:nth-child(3) { transform: translateY(8px) scale(0.96); z-index: 8; }
+.toast:nth-child(4) { transform: translateY(12px) scale(0.94); z-index: 7; }
+.toast:nth-child(n+5) { transform: translateY(16px) scale(0.92); z-index: 6; opacity: 0.8; }
+
+/* ===== STYLES POUR LE BOUTON DE DÉMARRAGE ===== */
+
+.start-game-button {
+    position: fixed;
+    top: 5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+    animation: slideInFromTopBounce 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.start-game-button:hover {
+    transform: translateX(-50%) scale(1.02);
+}
+
+.start-game-button .pulse-ring {
+    animation: startButtonPulse 2s infinite;
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+
 @media (max-width: 768px) {
     .container {
         padding-left: 1rem;
         padding-right: 1rem;
     }
+
+    .toast-container {
+        max-width: calc(100vw - 2rem);
+        padding: 0 1rem;
+    }
+
+    /* ✅ Responsive pour le bouton de démarrage */
+    .start-game-button {
+        top: 4rem;
+        max-width: calc(100vw - 2rem);
+    }
+}
+
+/* ===== LOADING SPINNER AMÉLIORÉ ===== */
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+/* ===== BOUTONS AVEC ANIMATIONS ===== */
+
+.btn-hover-scale {
+    transition: transform 0.2s ease-in-out;
+}
+
+.btn-hover-scale:hover {
+    transform: scale(1.05);
+}
+
+.btn-hover-scale:active {
+    transform: scale(0.95);
+}
+
+/* ===== FOCUS RINGS PERSONNALISÉS ===== */
+
+.focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+}
+
+/* ===== SCROLLBAR PERSONNALISÉE ===== */
+
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.7);
+}
+
+/* ===== ANIMATIONS D'ÉTAT ===== */
+
+/* Success state */
+@keyframes successPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+    }
+}
+
+.success-pulse {
+    animation: successPulse 1.5s ease-in-out;
+}
+
+/* Error state */
+@keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.error-shake {
+    animation: errorShake 0.6s ease-in-out;
+}
+
+/* ===== ÉTATS DE JEU ===== */
+
+/* Styles pour la partie en attente */
+.game-waiting {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.game-waiting .game-board,
+.game-waiting .color-picker {
+    filter: grayscale(50%);
+}
+
+/* Styles pour la partie active */
+.game-active .game-board,
+.game-active .color-picker {
+    filter: none;
+    opacity: 1;
+}
+
+/* ===== UTILITAIRES DE DEBUG ===== */
+
+.debug-border {
+    border: 2px solid red !important;
+}
+
+.debug-bg {
+    background-color: rgba(255, 0, 0, 0.1) !important;
+}
+
+/* Styles pour les éléments en développement uniquement */
+.dev-only {
+    display: none;
+}
+
+/* En développement, afficher les éléments dev-only */
+body[data-env="development"] .dev-only {
+    display: block;
 }

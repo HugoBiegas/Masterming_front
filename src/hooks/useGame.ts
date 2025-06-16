@@ -20,6 +20,23 @@ export const useGame = (gameId?: string) => {
         }
     };
 
+    const startGame = async (): Promise<Game | null> => {
+        if (!game) return null;
+
+        try {
+            setError(null);
+            const updatedGame = await gameService.startGame(game.id);
+
+            // Mettre à jour l'état local
+            setGame(updatedGame);
+
+            return updatedGame;
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Erreur lors du démarrage de la partie');
+            return null;
+        }
+    };
+
     const makeAttempt = async (attempt: AttemptRequest): Promise<AttemptResult | null> => {
         if (!game) return null;
 
@@ -48,8 +65,10 @@ export const useGame = (gameId?: string) => {
         loading,
         error,
         fetchGame,
+        startGame, // ✅ Exposer la nouvelle fonction
         makeAttempt,
         isGameFinished: game?.status === GameStatus.FINISHED,
-        isGameActive: game?.status === GameStatus.ACTIVE
+        isGameActive: game?.status === GameStatus.ACTIVE,
+        isGameWaiting: game?.status === GameStatus.WAITING // ✅ Nouveau helper
     };
 };

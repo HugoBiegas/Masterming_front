@@ -1,0 +1,16 @@
+chose a faire : 
+
+	debuger les tostes pour la partite game :
+		 - boucle infini a la victoir
+		- nombre beaucoup tros important en jeux
+		- augmenter la vitesse de siparistions a 1 ou 2 seconde max
+
+	voir pour la dispositions des couleur et du btn de validations.
+
+utilisateur :
+
+name : sssss
+
+email : ssss@gmail.com
+
+mdp : *ca:<%:zr$XHM9YU

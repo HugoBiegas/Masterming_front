@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { useNotification } from '@/contexts/NotificationContext';
 import { gameService } from '@/services/game';
 import { GameType, GameMode, Difficulty } from '@/types/game';
 import { DIFFICULTY_CONFIGS, GAME_TYPE_INFO } from '@/utils/constants';
 
 export const SoloGameCreation: React.FC = () => {
     const navigate = useNavigate();
+    const { showSuccess, showError, showInfo, showWarning } = useNotification();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [formData, setFormData] = useState({
@@ -21,27 +23,108 @@ export const SoloGameCreation: React.FC = () => {
             setLoading(true);
             setError('');
 
+            showInfo('🎮 Création de votre partie en cours...');
+
+            const selectedDifficulty = DIFFICULTY_CONFIGS[formData.difficulty];
+
+            // ✅ Structure corrigée selon l'API et les types
             const gameData = {
                 game_type: formData.game_type,
                 game_mode: GameMode.SINGLE,
                 difficulty: formData.difficulty,
                 max_players: 1,
-                is_private: false,
+                is_public: true,  // ✅ Utilise is_public maintenant
                 allow_spectators: false,
                 enable_chat: false,
-                quantum_enabled: formData.quantum_enabled
+                quantum_enabled: formData.quantum_enabled,
+                settings: {
+                    combination_length: selectedDifficulty.length,
+                    color_count: selectedDifficulty.colors,
+                    max_attempts: selectedDifficulty.attempts,
+                    time_limit: 600,
+                    quantum_hints_enabled: formData.quantum_enabled
+                }
             };
 
+            console.log('🚀 Données envoyées à l\'API:', gameData);
+
             const game = await gameService.createGame(gameData);
-            navigate(`/game/${game.id}`);
+
+            console.log('✅ Partie créée avec succès:', game);
+
+            showSuccess(`🎉 Partie créée avec succès ! ID: ${game.id}`);
+            showInfo(`🎯 Difficulté: ${formData.difficulty} - ${selectedDifficulty.colors} couleurs, ${selectedDifficulty.length} positions`);
+
+            setTimeout(() => {
+                navigate(`/game/${game.id}`);
+            }, 1500);
+
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Erreur lors de la création de la partie');
+            console.error('❌ Erreur détaillée:', err);
+
+            if (err.response) {
+                const status = err.response.status;
+                const detail = err.response.data?.detail || err.response.data?.message || 'Erreur inconnue';
+
+                console.error('Status:', status, 'Detail:', detail);
+
+                switch (status) {
+                    case 400:
+                        setError(`Données invalides: ${detail}`);
+                        showError(`❌ Données invalides: ${detail}`);
+                        break;
+                    case 401:
+                        setError('Session expirée. Veuillez vous reconnecter.');
+                        showWarning('⚠️ Session expirée. Veuillez vous reconnecter.');
+                        setTimeout(() => navigate('/'), 2000);
+                        break;
+                    case 422:
+                        setError(`Erreur de validation: ${detail}`);
+                        showError(`❌ Erreur de validation: ${detail}`);
+                        break;
+                    case 500:
+                        setError('Erreur serveur. Veuillez réessayer.');
+                        showError('💥 Erreur serveur. Veuillez réessayer dans quelques instants.');
+                        break;
+                    default:
+                        setError(`Erreur (${status}): ${detail}`);
+                        showError(`❌ Erreur (${status}): ${detail}`);
+                }
+            } else if (err.request) {
+                const errorMsg = 'Impossible de contacter le serveur. Vérifiez votre connexion.';
+                setError(errorMsg);
+                showError(`🌐 ${errorMsg}`);
+            } else {
+                const errorMsg = `Erreur: ${err.message}`;
+                setError(errorMsg);
+                showError(`💥 ${errorMsg}`);
+            }
         } finally {
             setLoading(false);
         }
     };
 
     const selectedDifficulty = DIFFICULTY_CONFIGS[formData.difficulty];
+
+    const handleDifficultyChange = (difficulty: Difficulty) => {
+        setFormData(prev => ({ ...prev, difficulty }));
+        const config = DIFFICULTY_CONFIGS[difficulty];
+        showInfo(`🎯 Difficulté changée: ${difficulty} (${config.colors} couleurs, ${config.length} positions, ${config.attempts} tentatives)`);
+    };
+
+    const handleGameTypeChange = (type: GameType) => {
+        setFormData(prev => ({ ...prev, game_type: type }));
+        showInfo(`🎮 Type de jeu sélectionné: ${GAME_TYPE_INFO[type].name}`);
+    };
+
+    const handleQuantumToggle = (enabled: boolean) => {
+        setFormData(prev => ({ ...prev, quantum_enabled: enabled }));
+        if (enabled) {
+            showSuccess('⚛️ Fonctionnalités quantiques activées !');
+        } else {
+            showInfo('⚛️ Fonctionnalités quantiques désactivées');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -70,7 +153,7 @@ export const SoloGameCreation: React.FC = () => {
                                 {Object.values(GameType).map((type) => (
                                     <button
                                         key={type}
-                                        onClick={() => setFormData(prev => ({ ...prev, game_type: type }))}
+                                        onClick={() => handleGameTypeChange(type)}
                                         className={`p-4 border-2 rounded-lg text-left transition-all ${
                                             formData.game_type === type
                                                 ? 'border-blue-500 bg-blue-50'
@@ -93,7 +176,7 @@ export const SoloGameCreation: React.FC = () => {
                                 {Object.entries(DIFFICULTY_CONFIGS).map(([difficulty, config]) => (
                                     <button
                                         key={difficulty}
-                                        onClick={() => setFormData(prev => ({ ...prev, difficulty: difficulty as Difficulty }))}
+                                        onClick={() => handleDifficultyChange(difficulty as Difficulty)}
                                         className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
                                             formData.difficulty === difficulty
                                                 ? 'border-blue-500 bg-blue-50'
@@ -121,12 +204,12 @@ export const SoloGameCreation: React.FC = () => {
                                     <input
                                         type="checkbox"
                                         checked={formData.quantum_enabled}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, quantum_enabled: e.target.checked }))}
+                                        onChange={(e) => handleQuantumToggle(e.target.checked)}
                                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                                     />
                                     <span className="ml-2 text-sm text-gray-700">
-                    Activer les fonctionnalités quantiques avancées
-                  </span>
+                                        Activer les fonctionnalités quantiques avancées
+                                    </span>
                                 </label>
                             </div>
                         )}

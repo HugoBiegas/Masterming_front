@@ -7,6 +7,7 @@ import { GameBoard } from '@/components/game/GameBoard';
 import { ColorPicker } from '@/components/game/ColorPicker';
 import { GameControls } from '@/components/game/GameControls';
 import { AttemptHistory } from '@/components/game/AttemptHistory';
+import { StartGameButton } from '@/components/game/StartGameButton'; // ✅ Nouveau import
 import { useGame } from '@/hooks/useGame';
 import { useNotification } from '@/contexts/NotificationContext';
 import { GameStatus } from '@/types/game';
@@ -15,7 +16,7 @@ import { DIFFICULTY_CONFIGS } from '@/utils/constants';
 export const GamePlay: React.FC = () => {
     const { gameId } = useParams<{ gameId: string }>();
     const navigate = useNavigate();
-    const { game, loading, error, makeAttempt, isGameFinished, isGameActive } = useGame(gameId);
+    const { game, loading, error, makeAttempt, startGame, isGameFinished, isGameActive, isGameWaiting } = useGame(gameId); // ✅ Ajout startGame et isGameWaiting
     const { showError, showSuccess, showInfo, showWarning } = useNotification();
 
     const [currentCombination, setCurrentCombination] = useState<number[]>([]);
@@ -26,15 +27,36 @@ export const GamePlay: React.FC = () => {
     const [timer, setTimer] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
 
+    // ✅ Nouvelle fonction pour démarrer la partie
+    const handleStartGame = async () => {
+        try {
+            showInfo('🚀 Démarrage de la partie...');
+
+            const updatedGame = await startGame();
+
+            if (updatedGame) {
+                showSuccess('🎯 Partie démarrée ! Bonne chance !');
+                showInfo(`💪 Vous avez ${updatedGame.max_attempts || 'un nombre illimité'} de tentatives pour réussir !`);
+                setIsTimerRunning(true);
+            }
+        } catch (err) {
+            console.error('Erreur lors du démarrage:', err);
+            showError('❌ Impossible de démarrer la partie. Veuillez réessayer.');
+        }
+    };
+
     // Initialiser la combinaison actuelle
     useEffect(() => {
         if (game && currentCombination.length === 0) {
             const initialCombination = new Array(game.combination_length).fill(0);
             setCurrentCombination(initialCombination);
+
+            // ✅ Ne plus démarrer automatiquement le timer ici
             if (game.status === GameStatus.ACTIVE) {
                 setIsTimerRunning(true);
-                showSuccess(`🎯 Partie démarrée ! Objectif : ${game.combination_length} positions avec ${game.available_colors} couleurs`);
-                showInfo(`💪 Vous avez ${game.max_attempts || 'un nombre illimité'} de tentatives pour réussir !`);
+                showSuccess('🎯 Partie en cours ! Trouvez la combinaison secrète !');
+            } else if (game.status === GameStatus.WAITING) {
+                showInfo('⏳ Partie créée ! Cliquez sur "DÉMARRER" pour commencer votre défi.');
             }
         }
     }, [game, currentCombination.length, showSuccess, showInfo]);
@@ -71,7 +93,6 @@ export const GamePlay: React.FC = () => {
         if (isGameFinished && game) {
             setIsTimerRunning(false);
 
-            // Vérifier si le joueur a gagné
             const lastAttempt = game.attempts[game.attempts.length - 1];
             if (lastAttempt && lastAttempt.is_correct) {
                 setIsWinner(true);
@@ -84,7 +105,6 @@ export const GamePlay: React.FC = () => {
                 showInfo('🎯 Ne vous découragez pas, réessayez avec une nouvelle partie !');
             }
 
-            // Afficher le modal après un court délai
             setTimeout(() => setShowResult(true), 2000);
         }
     }, [isGameFinished, game, showSuccess, showError, showInfo]);
@@ -92,27 +112,26 @@ export const GamePlay: React.FC = () => {
     // Logique pour la sélection de couleur
     const handlePositionClick = (position: number) => {
         if (!isGameActive) {
-            showError('⏸️ La partie n\'est plus active !');
+            if (isGameWaiting) {
+                showWarning('⏳ Veuillez d\'abord démarrer la partie !');
+            } else {
+                showError('⏸️ La partie n\'est plus active !');
+            }
             return;
         }
 
         const newCombination = [...currentCombination];
 
-        // Si une couleur est sélectionnée
         if (selectedColor && selectedColor > 0) {
-            // Placer la couleur à la position cliquée
             newCombination[position] = selectedColor;
             setCurrentCombination(newCombination);
             showInfo(`🎨 Couleur placée en position ${position + 1}`);
         } else {
-            // Si aucune couleur sélectionnée et qu'il y a déjà une couleur à cette position
             if (newCombination[position] > 0) {
-                // Supprimer la couleur de cette position
                 newCombination[position] = 0;
                 setCurrentCombination(newCombination);
                 showInfo(`🗑️ Couleur supprimée de la position ${position + 1}`);
             } else {
-                // Aucune couleur sélectionnée et position vide
                 showWarning('🎨 Veuillez d\'abord sélectionner une couleur !');
             }
         }
@@ -121,20 +140,21 @@ export const GamePlay: React.FC = () => {
     // Logique pour la sélection de couleur
     const handleColorSelect = (color: number) => {
         if (!isGameActive) {
-            showError('⏸️ La partie n\'est plus active !');
+            if (isGameWaiting) {
+                showWarning('⏳ Veuillez d\'abord démarrer la partie !');
+            } else {
+                showError('⏸️ La partie n\'est plus active !');
+            }
             return;
         }
 
         if (color === 0) {
-            // Désélectionner
             setSelectedColor(null);
             showInfo('🔄 Aucune couleur sélectionnée');
         } else if (color === selectedColor) {
-            // Cliquer sur la même couleur = désélectionner
             setSelectedColor(null);
             showInfo('🔄 Couleur désélectionnée');
         } else {
-            // Sélectionner une nouvelle couleur
             setSelectedColor(color);
             showSuccess('✅ Couleur sélectionnée ! Cliquez sur une position pour la placer.');
         }
@@ -152,7 +172,9 @@ export const GamePlay: React.FC = () => {
 
     const handleSubmit = async () => {
         if (!canSubmit || !game) {
-            if (!isGameActive) {
+            if (isGameWaiting) {
+                showWarning('⏳ Veuillez d\'abord démarrer la partie !');
+            } else if (!isGameActive) {
                 showError('⏸️ La partie n\'est plus active !');
             } else {
                 showWarning('⚠️ Veuillez compléter votre combinaison avant de valider !');
@@ -177,14 +199,12 @@ export const GamePlay: React.FC = () => {
                     showError('💔 Plus de tentatives ! Partie terminée...');
                     setTimeout(() => setShowResult(true), 2500);
                 } else {
-                    // Continuer le jeu
                     const feedbackMessage = result.correct_positions > 0 || result.correct_colors > 0
                         ? `🎯 Tentative ${result.attempt_number} : ${result.correct_positions} bien placées, ${result.correct_colors} mal placées`
                         : `❌ Tentative ${result.attempt_number} : Aucune couleur correcte trouvée`;
 
                     showInfo(feedbackMessage);
 
-                    // Encouragements selon les résultats
                     if (result.correct_positions === game.combination_length - 1) {
                         showWarning('🔥 Très proche ! Plus qu\'une position à corriger !');
                     } else if (result.correct_positions >= game.combination_length / 2) {
@@ -239,7 +259,10 @@ export const GamePlay: React.FC = () => {
                         <span className="text-2xl mb-2 block">❌</span>
                         <p className="font-medium">{error}</p>
                         <button
-                            onClick={() => navigate('/modes')}
+                            onClick={() => {
+                                showInfo('Retour au menu principal');
+                                navigate('/modes');
+                            }}
                             className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
                         >
                             Retour au menu
@@ -281,6 +304,11 @@ export const GamePlay: React.FC = () => {
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
             <Header />
 
+            {/* ✅ Bouton de démarrage - s'affiche seulement si la partie est en attente */}
+            {isGameWaiting && (
+                <StartGameButton onStartGame={handleStartGame} />
+            )}
+
             <div className="container mx-auto py-6 px-4">
                 {/* Header de la partie */}
                 <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
@@ -302,6 +330,25 @@ export const GamePlay: React.FC = () => {
                                 <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                     🔥 Max {difficultyConfig.attempts} tentatives
                                 </span>
+                            </div>
+
+                            {/* ✅ Indicateur de statut */}
+                            <div className="mt-3">
+                                {isGameWaiting && (
+                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                                        ⏳ En attente de démarrage
+                                    </span>
+                                )}
+                                {isGameActive && (
+                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                        🎮 Partie en cours
+                                    </span>
+                                )}
+                                {isGameFinished && (
+                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                                        🏁 Partie terminée
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -347,22 +394,19 @@ export const GamePlay: React.FC = () => {
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     {/* Zone de jeu principale */}
                     <div className="xl:col-span-2 space-y-6">
-                        {/* Plateau de jeu */}
                         <GameBoard
                             combination={currentCombination}
                             onPositionClick={handlePositionClick}
                             selectedColor={selectedColor}
-                            isActive={isGameActive}
+                            isActive={isGameActive} // ✅ Désactivé si partie en attente
                         />
 
-                        {/* Sélecteur de couleurs */}
                         <ColorPicker
                             availableColors={game.available_colors}
                             selectedColor={selectedColor}
                             onColorSelect={handleColorSelect}
                         />
 
-                        {/* Contrôles */}
                         <GameControls
                             onSubmit={handleSubmit}
                             onReset={resetCombination}
@@ -390,7 +434,6 @@ export const GamePlay: React.FC = () => {
                 showCloseButton={false}
             >
                 <div className="text-center space-y-6">
-                    {/* Emoji et titre animés */}
                     <div className="space-y-4">
                         <div className={`text-8xl ${isWinner ? 'animate-bounce' : ''}`}>
                             {isWinner ? '🏆' : '💭'}
@@ -439,7 +482,6 @@ export const GamePlay: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Taux de réussite */}
                         {game.max_attempts && (
                             <div className="mt-4 bg-white p-3 rounded-lg">
                                 <span className="text-gray-600">Efficacité</span>
