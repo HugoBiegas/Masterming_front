@@ -1,8 +1,12 @@
+// src/services/api.ts - Correction complète
+
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { API_BASE_URL } from '@/utils/constants';
 
 class ApiService {
     private api: AxiosInstance;
+    private isRefreshing = false; // 🔥 Ajouter pour éviter multiples refresh simultanés
+    private failedQueue: any[] = []; // 🔥 Queue pour les requêtes en attente
 
     constructor() {
         this.api = axios.create({
@@ -10,7 +14,7 @@ class ApiService {
             headers: {
                 'Content-Type': 'application/json',
             },
-            timeout: 10000, // 10 secondes de timeout
+            timeout: 10000,
         });
 
         this.setupInterceptors();
@@ -29,47 +33,75 @@ class ApiService {
             (error) => Promise.reject(error)
         );
 
-        // Response interceptor pour gérer les erreurs
+        // Response interceptor CORRIGÉ pour gérer les erreurs
         this.api.interceptors.response.use(
             (response: AxiosResponse) => response,
             async (error) => {
                 const originalRequest = error.config;
 
-                if (error.response?.status === 401 && !originalRequest._retry) {
-                    originalRequest._retry = true;
-
-                    // Token expiré, essayer de le rafraîchir
-                    const refreshToken = localStorage.getItem('refresh_token');
-                    if (refreshToken) {
-                        try {
-                            const response = await this.post('/api/v1/auth/refresh', {
-                                refresh_token: refreshToken
-                            });
-
-                            const { access_token } = response.data;
-                            localStorage.setItem('access_token', access_token);
-
-                            // Retry la requête originale
-                            originalRequest.headers.Authorization = `Bearer ${access_token}`;
-                            return this.api.request(originalRequest);
-                        } catch (refreshError) {
-                            // Refresh failed, redirect to login
-                            localStorage.removeItem('access_token');
-                            localStorage.removeItem('refresh_token');
-
-                            // Éviter la redirection si on est déjà sur la page de connexion
-                            if (window.location.pathname !== '/') {
-                                window.location.href = '/';
-                            }
-                            return Promise.reject(refreshError);
-                        }
-                    } else {
-                        // No refresh token, redirect to login
-                        localStorage.removeItem('access_token');
-                        if (window.location.pathname !== '/') {
-                            window.location.href = '/';
-                        }
+                // 🔥 CORRECTION 1: Exclure la route refresh de la logique de retry
+                if (originalRequest.url?.includes('/auth/refresh')) {
+                    // Si c'est la route refresh qui échoue, déconnecter immédiatement
+                    if (error.response?.status === 401) {
+                        this.forceLogout();
                     }
+                    return Promise.reject(error);
+                }
+
+                // 🔥 CORRECTION 2: Gérer les 401 avec une seule tentative de refresh
+                if (error.response?.status === 401 && !originalRequest._retry) {
+
+                    // Si un refresh est déjà en cours, mettre en queue
+                    if (this.isRefreshing) {
+                        return new Promise((resolve, reject) => {
+                            this.failedQueue.push({ resolve, reject, config: originalRequest });
+                        });
+                    }
+
+                    originalRequest._retry = true;
+                    this.isRefreshing = true;
+
+                    const refreshToken = localStorage.getItem('refresh_token');
+
+                    if (!refreshToken) {
+                        this.forceLogout();
+                        return Promise.reject(error);
+                    }
+
+                    try {
+                        // 🔥 CORRECTION 3: Utiliser axios directement sans interceptor
+                        const response = await axios.post(
+                            `${API_BASE_URL}/api/v1/auth/refresh`,
+                            { refresh_token: refreshToken },
+                            {
+                                headers: { 'Content-Type': 'application/json' },
+                                timeout: 10000
+                            }
+                        );
+
+                        const { access_token } = response.data;
+                        localStorage.setItem('access_token', access_token);
+
+                        // Traiter les requêtes en queue
+                        this.processFailedQueue(null, access_token);
+
+                        // Retry la requête originale
+                        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+                        return this.api.request(originalRequest);
+
+                    } catch (refreshError: any) {
+                        // 🔥 CORRECTION 4: Gérer l'échec du refresh proprement
+                        this.processFailedQueue(refreshError, null);
+                        this.forceLogout();
+                        return Promise.reject(refreshError);
+                    } finally {
+                        this.isRefreshing = false;
+                    }
+                }
+
+                // 🔥 CORRECTION 5: Pour les autres 401, déconnecter immédiatement
+                if (error.response?.status === 401) {
+                    this.forceLogout();
                 }
 
                 // Gestion spécifique des erreurs réseau
@@ -82,6 +114,41 @@ class ApiService {
         );
     }
 
+    // 🔥 NOUVELLE MÉTHODE: Gestion de la queue des requêtes échouées
+    private processFailedQueue(error: any, token: string | null) {
+        this.failedQueue.forEach(({ resolve, reject, config }) => {
+            if (error) {
+                reject(error);
+            } else {
+                config.headers.Authorization = `Bearer ${token}`;
+                resolve(this.api.request(config));
+            }
+        });
+
+        this.failedQueue = [];
+    }
+
+    // 🔥 NOUVELLE MÉTHODE: Déconnexion forcée et propre
+    private forceLogout() {
+        console.warn('🔐 Session expirée - Déconnexion automatique');
+
+        // Nettoyer le stockage
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+
+        // Éviter la redirection si on est déjà sur la page de connexion
+        if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
+            // 🔥 IMPORTANT: Utiliser replace pour éviter l'historique
+            window.location.replace('/');
+        }
+    }
+
+    // 🔥 NOUVELLE MÉTHODE: Vérifier si l'utilisateur est connecté
+    isAuthenticated(): boolean {
+        return !!(localStorage.getItem('access_token') && localStorage.getItem('refresh_token'));
+    }
+
+    // Méthodes HTTP inchangées mais avec meilleure gestion d'erreur
     async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
         try {
             return await this.api.get(url, config);
@@ -118,55 +185,24 @@ class ApiService {
         }
     }
 
-    // Méthode spécifique pour quitter les parties actives
-    async leaveAllActiveGames(): Promise<AxiosResponse<any>> {
-        try {
-            return await this.post('/api/v1/games/leave');
-        } catch (error) {
-            console.error('Erreur lors de la sortie des parties actives:', error);
-            throw error;
-        }
-    }
-
-    // Méthode pour créer une partie avec auto-leave
-    async createGameWithAutoLeave(gameData: any, autoLeave: boolean = false): Promise<AxiosResponse<any>> {
-        try {
-            return await this.post(`/api/v1/games/create?auto_leave=${autoLeave}`, gameData);
-        } catch (error) {
-            console.error('Erreur lors de la création de la partie:', error);
-            throw error;
-        }
-    }
-
-    // Méthode pour obtenir le statut de jeu de l'utilisateur
-    async getCurrentGameStatus(): Promise<AxiosResponse<any>> {
-        try {
-            return await this.get('/api/v1/games/my-current-game');
-        } catch (error) {
-            console.error('Erreur lors de la récupération du statut de jeu:', error);
-            throw error;
-        }
-    }
-
+    // 🔥 MÉTHODE AMÉLIORÉE: Gestion d'erreurs plus robuste
     private handleApiError(error: any, method: string, url: string) {
-        const errorInfo = {
-            method,
-            url,
-            status: error.response?.status,
-            message: error.response?.data?.detail || error.message,
-            timestamp: new Date().toISOString()
-        };
+        // Log pour debugging (à retirer en production)
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`API Error [${method} ${url}]:`, {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                message: error.message
+            });
+        }
 
-        // Log pour debug (peut être envoyé à un service de logging)
-        console.error('API Error:', errorInfo);
-
-        // Ici on pourrait ajouter un service de logging externe
-        // logger.error('API_ERROR', errorInfo);
-    }
-
-    // Méthode utilitaire pour vérifier si l'utilisateur est connecté
-    isAuthenticated(): boolean {
-        return !!localStorage.getItem('access_token');
+        // Gestion spécifique pour certaines erreurs
+        if (error.response?.status === 403) {
+            console.warn('Accès refusé - Permissions insuffisantes');
+        } else if (error.response?.status >= 500) {
+            console.error('Erreur serveur - Service temporairement indisponible');
+        }
     }
 
     // Méthode utilitaire pour obtenir le token actuel
@@ -174,10 +210,16 @@ class ApiService {
         return localStorage.getItem('access_token');
     }
 
-    // Méthode pour déconnecter l'utilisateur
     logout(): void {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
+
+        // Optionnel: Notifier le serveur de la déconnexion
+        if (this.isAuthenticated()) {
+            this.post('/api/v1/auth/logout', {}).catch(() => {
+                // Ignorer les erreurs de déconnexion côté serveur
+            });
+        }
     }
 }
 

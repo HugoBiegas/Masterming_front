@@ -3,21 +3,39 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Modal } from '@/components/common/Modal';
+import { EliminationModal } from '@/components/game/EliminationModal';
+import { EliminationNotification } from '@/components/game/EliminationNotification';
 import { GameBoard } from '@/components/game/GameBoard';
 import { ColorPicker } from '@/components/game/ColorPicker';
 import { AttemptHistory } from '@/components/game/AttemptHistory';
-import { StartGameButton } from '@/components/game/StartGameButton';
 import { useGame } from '@/hooks/useGame';
+import { useElimination } from '@/hooks/useElimination';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GameStatus } from '@/types/game';
-import { DIFFICULTY_CONFIGS } from '@/utils/constants';
+import { DIFFICULTY_CONFIGS, COLOR_PALETTE } from '@/utils/constants';
 import { gameService } from '@/services/game';
+
+// Interface étendue pour Participant avec élimination
+interface ExtendedParticipant {
+    id: string;
+    user_id: string;
+    username: string;
+    status: string;
+    joined_at: string;
+    score: number;
+    attempts_count: number;
+    is_eliminated?: boolean;
+    hasShownElimination?: boolean;
+}
 
 export const GamePlay: React.FC = () => {
     const { gameId } = useParams<{ gameId: string }>();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const { game, loading, error, makeAttempt, isGameFinished, isGameActive, refreshGame } = useGame(gameId);
     const { showError, showSuccess, showWarning } = useNotification();
+    const elimination = useElimination();
 
     const [currentCombination, setCurrentCombination] = useState<number[]>([]);
     const [selectedColor, setSelectedColor] = useState<number | null>(null);
@@ -34,6 +52,15 @@ export const GamePlay: React.FC = () => {
     const hasShownGameFinishedMessage = useRef(false);
     const hasShownVictoryMessage = useRef(false);
 
+    // Map pour tracker les éliminations affichées
+    const shownEliminations = useRef(new Set<string>());
+
+    // Fonction pour obtenir le joueur actuel
+    const getCurrentPlayer = useCallback(() => {
+        if (!game?.participants || !user?.id) return null;
+        return game.participants.find(p => p.user_id === user.id);
+    }, [game?.participants, user?.id]);
+
     // Initialiser la combinaison actuelle
     useEffect(() => {
         if (game && game.combination_length && currentCombination.length === 0) {
@@ -47,6 +74,32 @@ export const GamePlay: React.FC = () => {
             }
         }
     }, [game?.id, game?.combination_length, game?.status, game?.available_colors]);
+
+    // Reset du hook d'élimination lors du changement de partie
+    useEffect(() => {
+        elimination.reset();
+        shownEliminations.current.clear();
+    }, [game?.id]);
+
+    // Surveiller les éliminations d'autres joueurs
+    useEffect(() => {
+        if (!game?.participants || !user?.id || !game.max_attempts) return;
+
+        game.participants.forEach(participant => {
+            if (participant.user_id !== user.id &&
+                participant.status === 'eliminated' &&
+                !shownEliminations.current.has(participant.user_id)) {
+
+                shownEliminations.current.add(participant.user_id);
+
+                elimination.handleOtherPlayerEliminated(
+                    participant.username,
+                    participant.attempts_count || 0,
+                    game.max_attempts || 0
+                );
+            }
+        });
+    }, [game?.participants, user?.id, game?.max_attempts, elimination]);
 
     // Timer
     useEffect(() => {
@@ -67,19 +120,24 @@ export const GamePlay: React.FC = () => {
     const lastAlertAttempts = useRef<number | null>(null);
     useEffect(() => {
         if (game && game.max_attempts && isGameActive) {
-            const remainingAttempts = game.max_attempts - game.attempts.length;
+            const currentPlayer = getCurrentPlayer();
+            if (!currentPlayer || currentPlayer.status === 'eliminated') return;
+
+            const remainingAttempts = game.max_attempts - (currentPlayer.attempts_count || game.attempts.length);
 
             if (lastAlertAttempts.current !== remainingAttempts) {
                 lastAlertAttempts.current = remainingAttempts;
 
                 if (remainingAttempts === 1) {
                     showError('🚨 DERNIÈRE TENTATIVE !');
+                } else if (remainingAttempts === 2) {
+                    showWarning('⚠️ Plus que 2 tentatives !');
                 } else if (remainingAttempts === 3) {
                     showWarning('⚠️ Plus que 3 tentatives !');
                 }
             }
         }
-    }, [game?.attempts?.length, game?.max_attempts, isGameActive]);
+    }, [game?.attempts?.length, game?.max_attempts, isGameActive, getCurrentPlayer, showError, showWarning]);
 
     // Vérifier si le jeu est terminé
     useEffect(() => {
@@ -99,86 +157,94 @@ export const GamePlay: React.FC = () => {
                     showSuccess(`🏆 VICTOIRE en ${game.attempts.length} tentatives !`);
                 }
             } else {
-                setIsWinner(false);
-                showError('💔 Défaite ! Tentez votre chance avec une nouvelle partie !');
+                const currentPlayer = getCurrentPlayer();
+                if (currentPlayer && currentPlayer.status === 'eliminated') {
+                    // Joueur éliminé - ne pas afficher le modal de défaite classique
+                    return;
+                } else {
+                    setIsWinner(false);
+                    showError('💔 Défaite ! Tentez votre chance avec une nouvelle partie !');
+                }
             }
 
-            // Afficher le modal après un court délai
             setTimeout(() => setShowResult(true), 1500);
         }
-    }, [isGameFinished, game?.id]);
+    }, [isGameFinished, game, getCurrentPlayer, showError, showSuccess]);
 
-    // Fonction pour quitter la partie
-    const handleLeaveGame = useCallback(async () => {
-        if (isLeaving) return;
-
-        try {
-            setIsLeaving(true);
-            showWarning('🚪 Vous quittez la partie...');
-
-            await gameService.leaveAllActiveGames();
-            navigate('/modes');
-            showSuccess('✅ Vous avez quitté la partie');
-
-        } catch (error) {
-            console.error('Erreur lors de la sortie de la partie:', error);
-            showError('❌ Erreur lors de la sortie de la partie');
-        } finally {
-            setIsLeaving(false);
+    // Démarrer automatiquement le timer si actif
+    useEffect(() => {
+        if (isGameActive && !isTimerRunning) {
+            setIsTimerRunning(true);
         }
-    }, [isLeaving, navigate, showWarning, showSuccess, showError]);
+    }, [isGameActive, isTimerRunning]);
 
-    // Fonction pour démarrer la partie
     const handleStartGame = useCallback(async () => {
-        if (!game || isStarting) return;
+        if (!game) return;
 
         try {
             setIsStarting(true);
-            showWarning('🚀 Démarrage de la partie...');
+            showSuccess('🚀 Démarrage de la partie...');
 
             await gameService.startGame(game.id);
             await refreshGame();
 
-            showSuccess('✅ Partie démarrée !');
+            showSuccess('🎯 Partie démarrée !');
             setIsTimerRunning(true);
-
-        } catch (error) {
-            console.error('Erreur lors du démarrage:', error);
-            showError('❌ Erreur lors du démarrage de la partie');
+        } catch (err) {
+            console.error('Erreur lors du démarrage:', err);
+            showError('Erreur lors du démarrage de la partie');
         } finally {
             setIsStarting(false);
         }
-    }, [game, isStarting, showWarning, showSuccess, showError, refreshGame]);
+    }, [game, refreshGame, showError, showSuccess]);
 
-    // Logique pour la sélection de position
-    const handlePositionClick = useCallback((position: number) => {
+    const handleLeaveGame = useCallback(async () => {
+        if (!game) return;
+
+        try {
+            setIsLeaving(true);
+            await gameService.leaveAllActiveGames();
+            showSuccess('👋 Vous avez quitté la partie');
+            navigate('/modes');
+        } catch (err) {
+            console.error('Erreur lors de la sortie:', err);
+            showError('Erreur lors de la sortie de la partie');
+        } finally {
+            setIsLeaving(false);
+        }
+    }, [game, navigate, showError, showSuccess]);
+
+    const handlePositionClick = useCallback((index: number) => {
         if (!isGameActive) {
             showError('⏸️ La partie n\'est plus active !');
             return;
         }
 
-        const newCombination = [...currentCombination];
-
-        if (selectedColor && selectedColor > 0) {
-            // Placer la couleur à la position cliquée
-            newCombination[position] = selectedColor;
-            setCurrentCombination(newCombination);
-        } else {
-            // Si aucune couleur sélectionnée, suggérer de sélectionner une couleur
+        if (selectedColor === null) {
             showWarning('🎨 Sélectionnez d\'abord une couleur !');
+            return;
         }
-    }, [currentCombination, selectedColor, isGameActive, showError, showWarning]);
 
-    // Fonction pour supprimer une couleur d'une position
-    const handleRemoveColor = useCallback((position: number) => {
-        if (!isGameActive) return;
+        setCurrentCombination(prev => {
+            const newCombination = [...prev];
+            newCombination[index] = selectedColor;
+            return newCombination;
+        });
+    }, [selectedColor, isGameActive, showError, showWarning]);
 
-        const newCombination = [...currentCombination];
-        newCombination[position] = 0;
-        setCurrentCombination(newCombination);
-    }, [currentCombination, isGameActive]);
+    const handleRemoveColor = useCallback((index: number) => {
+        if (!isGameActive) {
+            showError('⏸️ La partie n\'est plus active !');
+            return;
+        }
 
-    // Logique pour la sélection de couleur
+        setCurrentCombination(prev => {
+            const newCombination = [...prev];
+            newCombination[index] = 0;
+            return newCombination;
+        });
+    }, [isGameActive, showError]);
+
     const handleColorSelect = useCallback((color: number) => {
         if (!isGameActive) {
             showError('⏸️ La partie n\'est plus active !');
@@ -199,13 +265,20 @@ export const GamePlay: React.FC = () => {
         }
     }, [game?.combination_length]);
 
-    // Vérifier que TOUTES les positions sont remplies
-    const canSubmit = currentCombination.every(color => color > 0) && isGameActive;
+    // Vérifier si on peut faire une tentative
+    const currentPlayer = getCurrentPlayer();
+    const isPlayerEliminated = currentPlayer && currentPlayer.status === 'eliminated';
+    const canSubmit = currentCombination.every(color => color > 0) &&
+        isGameActive &&
+        !isPlayerEliminated &&
+        !elimination.showEliminationModal;
 
     const handleSubmit = useCallback(async () => {
         if (!canSubmit || !game) {
             if (!isGameActive) {
                 showError('⏸️ La partie n\'est plus active !');
+            } else if (isPlayerEliminated) {
+                showError('💀 Vous avez été éliminé !');
             } else {
                 showWarning('⚠️ Complétez toutes les positions !');
             }
@@ -220,24 +293,53 @@ export const GamePlay: React.FC = () => {
                     setIsWinner(true);
                     setCurrentScore(result.score);
                     setIsTimerRunning(false);
-                    // Le message de victoire sera géré par useEffect
                     setTimeout(() => setShowResult(true), 1500);
+
                 } else if (result.game_status === GameStatus.FINISHED) {
-                    setIsWinner(false);
-                    setIsTimerRunning(false);
-                    setTimeout(() => setShowResult(true), 1500);
-                } else {
-                    if (result.correct_positions === game.combination_length - 1) {
-                        showWarning('🔥 Très proche ! Plus qu\'une position !');
+                    const currentPlayer = getCurrentPlayer();
+                    if (currentPlayer && currentPlayer.status === 'eliminated') {
+                        // Joueur éliminé lors de la fin de partie
+                        elimination.handlePlayerEliminated(
+                            result.attempt_number,
+                            game.max_attempts || 0,
+                            result.score
+                        );
+                    } else {
+                        // Fin de partie normale (défaite sans élimination)
+                        setIsWinner(false);
+                        setIsTimerRunning(false);
+                        setTimeout(() => setShowResult(true), 1500);
                     }
-                    resetCombination();
+                } else {
+                    // Vérifier l'élimination sur tentative normale
+                    const currentPlayer = getCurrentPlayer();
+                    if (currentPlayer && game.max_attempts) {
+                        const remainingAttempts = game.max_attempts - result.attempt_number;
+
+                        if (remainingAttempts === 0 && !result.is_winning) {
+                            // Plus de tentatives = élimination
+                            elimination.handlePlayerEliminated(
+                                result.attempt_number,
+                                game.max_attempts,
+                                result.score
+                            );
+                        } else {
+                            // Continuer le jeu
+                            if (result.correct_positions === game.combination_length - 1) {
+                                showWarning('🔥 Très proche ! Plus qu\'une position !');
+                            }
+                            resetCombination();
+                        }
+                    } else {
+                        resetCombination();
+                    }
                 }
             }
         } catch (err) {
             console.error('Erreur lors de la tentative:', err);
             showError('💥 Erreur lors de la validation');
         }
-    }, [canSubmit, game, isGameActive, currentCombination, makeAttempt, resetCombination, showError, showWarning]);
+    }, [canSubmit, game, isGameActive, isPlayerEliminated, currentCombination, makeAttempt, resetCombination, showError, showWarning, getCurrentPlayer, elimination]);
 
     const handleNewGame = useCallback(() => {
         navigate('/solo');
@@ -258,82 +360,48 @@ export const GamePlay: React.FC = () => {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
-                    <LoadingSpinner size="lg" />
-                    <p className="mt-4 text-gray-600 text-lg">Chargement de la partie...</p>
+                    <LoadingSpinner />
+                    <p className="mt-4 text-gray-600">Chargement de la partie...</p>
                 </div>
             </div>
         );
     }
 
-    if (error) {
+    if (error || !game) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                <Header />
-                <div className="container mx-auto py-8">
-                    <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg max-w-md mx-auto text-center">
-                        <span className="text-2xl mb-2 block">❌</span>
-                        <p className="font-medium">{error}</p>
-                        <button
-                            onClick={() => navigate('/modes')}
-                            className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
-                        >
-                            Retour au menu
-                        </button>
-                    </div>
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center bg-white rounded-lg p-8 shadow-lg max-w-md mx-4">
+                    <div className="text-6xl mb-4">❌</div>
+                    <h2 className="text-xl font-bold text-red-600 mb-2">Erreur</h2>
+                    <p className="text-gray-600 mb-4">
+                        {error || 'Partie non trouvée ou inaccessible'}
+                    </p>
+                    <button
+                        onClick={() => navigate('/modes')}
+                        className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        Retour aux modes
+                    </button>
                 </div>
             </div>
         );
     }
 
-    if (!game) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                <Header />
-                <div className="container mx-auto py-8">
-                    <div className="text-center bg-white rounded-lg shadow-lg p-8 max-w-md mx-auto">
-                        <span className="text-6xl mb-4 block">🔍</span>
-                        <h2 className="text-xl font-bold text-gray-800 mb-2">Partie non trouvée</h2>
-                        <p className="text-gray-600 mb-6">Cette partie n'existe pas ou a été supprimée.</p>
-                        <button
-                            onClick={() => navigate('/modes')}
-                            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                        >
-                            Retour au menu
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    const difficultyConfig = game?.difficulty && DIFFICULTY_CONFIGS[game.difficulty]
-        ? DIFFICULTY_CONFIGS[game.difficulty]
-        : DIFFICULTY_CONFIGS['medium'];
-
-    // CORRECTION : Utiliser la configuration de difficulté pour les tentatives
-    const maxAttempts = difficultyConfig.attempts;
+    const difficultyConfig = DIFFICULTY_CONFIGS[game.difficulty] || DIFFICULTY_CONFIGS.medium;
+    const maxAttempts = game.max_attempts || difficultyConfig.attempts;
     const remainingAttempts = maxAttempts - game.attempts.length;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
             <Header />
 
-            {/* Bouton Start flottant en haut (visible uniquement si en attente) */}
-            {game?.status === 'waiting' && (
-                <StartGameButton
-                    onStartGame={handleStartGame}
-                    disabled={isStarting}
-                />
-            )}
-
             <div className="container mx-auto py-6 px-4">
-                {/* Header de la partie */}
-                <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200 relative">
-                    {/* Bouton Quitter repositionné en haut à droite de la carte */}
+                {/* En-tête avec bouton quitter */}
+                <div className="bg-white rounded-lg shadow-lg p-6 mb-6 relative">
                     <button
                         onClick={handleLeaveGame}
                         disabled={isLeaving}
-                        className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white w-10 h-10 rounded-full transition-colors font-medium flex items-center justify-center"
+                        className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all transform hover:scale-105 disabled:opacity-50"
                         title="Quitter la partie"
                     >
                         {isLeaving ? (
@@ -376,20 +444,16 @@ export const GamePlay: React.FC = () => {
                                 <div className="font-medium">Tentative {game.attempts.length + 1} / {maxAttempts}</div>
                                 <div className={`text-xs font-medium mt-1 ${
                                     remainingAttempts <= 3 ? 'text-red-600' :
-                                        remainingAttempts <= 5 ? 'text-orange-600' : 'text-green-600'
+                                        remainingAttempts <= 5 ? 'text-orange-600' : 'text-blue-600'
                                 }`}>
-                                    {remainingAttempts} restantes
+                                    {remainingAttempts} tentative{remainingAttempts > 1 ? 's' : ''} restante{remainingAttempts > 1 ? 's' : ''}
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Barre de progression */}
+                    {/* Barre de progression des tentatives */}
                     <div className="mt-4">
-                        <div className="flex justify-between text-xs text-gray-600 mb-1">
-                            <span>Progression</span>
-                            <span>{game.attempts.length} / {maxAttempts}</span>
-                        </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                             <div
                                 className={`h-2 rounded-full transition-all duration-500 ${
@@ -398,47 +462,81 @@ export const GamePlay: React.FC = () => {
                                             'bg-blue-500'
                                 }`}
                                 style={{ width: `${(game.attempts.length / maxAttempts) * 100}%` }}
-                            ></div>
+                            />
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                    {/* Zone de jeu principale */}
-                    <div className="xl:col-span-2 space-y-6">
-                        {/* Plateau de jeu */}
-                        <GameBoard
-                            combination={currentCombination}
-                            onPositionClick={handlePositionClick}
-                            onRemoveColor={handleRemoveColor}
-                            onSubmitAttempt={handleSubmit}
-                            selectedColor={selectedColor}
-                            isActive={isGameActive}
-                            canSubmit={canSubmit}
-                        />
-
-                        {/* Sélecteur de couleurs */}
-                        <ColorPicker
-                            availableColors={game.available_colors}
-                            selectedColor={selectedColor}
-                            onColorSelect={handleColorSelect}
-                        />
-
+                {/* Bouton de démarrage si en attente */}
+                {game.status === GameStatus.WAITING && (
+                    <div className="bg-white rounded-lg shadow-lg p-6 mb-6 text-center">
+                        <h2 className="text-xl font-bold mb-4">🚀 Prêt à commencer ?</h2>
+                        <p className="text-gray-600 mb-4">Cliquez sur le bouton ci-dessous pour démarrer la partie</p>
+                        <button
+                            onClick={handleStartGame}
+                            disabled={isStarting}
+                            className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 disabled:bg-green-400 transition-all font-medium flex items-center justify-center mx-auto"
+                        >
+                            {isStarting ? (
+                                <>
+                                    <LoadingSpinner size="sm" className="mr-2" />
+                                    Démarrage...
+                                </>
+                            ) : (
+                                '🚀 Démarrer la partie'
+                            )}
+                        </button>
                     </div>
+                )}
 
-                    {/* Historique */}
-                    <div className="xl:col-span-1">
+                {/* Zone de jeu principale */}
+                {game.status === GameStatus.ACTIVE && (
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                        {/* Zone de jeu principale */}
+                        <div className="xl:col-span-2 space-y-6">
+                            {/* Plateau de jeu */}
+                            <GameBoard
+                                combination={currentCombination}
+                                onPositionClick={handlePositionClick}
+                                onRemoveColor={handleRemoveColor}
+                                onSubmitAttempt={handleSubmit}
+                                selectedColor={selectedColor}
+                                isActive={isGameActive}
+                                canSubmit={canSubmit}
+                            />
+
+                            {/* Sélecteur de couleurs */}
+                            <ColorPicker
+                                availableColors={game.available_colors}
+                                selectedColor={selectedColor}
+                                onColorSelect={handleColorSelect}
+                            />
+                        </div>
+
+                        {/* Historique */}
+                        <div className="xl:col-span-1">
+                            <AttemptHistory
+                                attempts={game.attempts}
+                                maxAttempts={maxAttempts}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* Historique seul pour les parties terminées */}
+                {game.status === GameStatus.FINISHED && (
+                    <div className="max-w-lg mx-auto">
                         <AttemptHistory
                             attempts={game.attempts}
                             maxAttempts={maxAttempts}
                         />
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* Modal de résultat REMISE */}
+            {/* Modal de résultat classique */}
             <Modal
-                isOpen={showResult}
+                isOpen={showResult && !elimination.showEliminationModal}
                 onClose={() => {}}
                 title=""
                 showCloseButton={false}
@@ -462,44 +560,38 @@ export const GamePlay: React.FC = () => {
                             }
                         </p>
 
-                        {isWinner && (
-                            <p className="text-green-600 font-medium">
-                                🌟 Excellent travail de déduction !
-                            </p>
-                        )}
-                    </div>
-
-                    {/* Statistiques de la partie */}
-                    <div className="bg-gray-50 p-6 rounded-xl">
-                        <h3 className="font-bold text-gray-800 mb-4">📊 Statistiques de la partie</h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div className="bg-white p-3 rounded-lg">
-                                <span className="text-gray-600">Score final</span>
-                                <div className="font-bold text-xl text-blue-600">{currentScore}</div>
-                            </div>
-                            <div className="bg-white p-3 rounded-lg">
-                                <span className="text-gray-600">Temps total</span>
-                                <div className="font-bold text-xl text-green-600">{formatTime(timer)}</div>
-                            </div>
-                            <div className="bg-white p-3 rounded-lg">
-                                <span className="text-gray-600">Tentatives</span>
-                                <div className="font-bold text-xl text-orange-600">
-                                    {game.attempts.length} / {maxAttempts}
+                        {/* Affichage de la solution en cas de défaite */}
+                        {!isWinner && game.solution && (
+                            <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4 mt-4">
+                                <div className="text-sm font-semibold text-red-700 mb-2">🔍 La solution était :</div>
+                                <div className="flex justify-center space-x-2">
+                                    {game.solution.map((color, index) => (
+                                        <div
+                                            key={index}
+                                            className="w-8 h-8 rounded-full border-2 border-gray-600 shadow-sm relative"
+                                            style={{
+                                                backgroundColor: COLOR_PALETTE[color - 1] || '#gray',
+                                                boxShadow: `0 2px 4px ${COLOR_PALETTE[color - 1] || '#gray'}40, inset 0 -1px 2px rgba(0,0,0,0.2)`
+                                            }}
+                                            title={`Position ${index + 1}: couleur ${color}`}
+                                        >
+                                            <div className="absolute top-1 left-1 w-2 h-2 bg-white rounded-full opacity-50" />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                            <div className="bg-white p-3 rounded-lg">
-                                <span className="text-gray-600">Difficulté</span>
-                                <div className="font-bold text-xl text-purple-600 capitalize">{game.difficulty}</div>
-                            </div>
-                        </div>
+                        )}
 
-                        {/* Taux de réussite */}
-                        <div className="mt-4 bg-white p-3 rounded-lg">
-                            <span className="text-gray-600">Efficacité</span>
-                            <div className="font-bold text-xl text-indigo-600">
-                                {Math.round(((maxAttempts - game.attempts.length) / maxAttempts) * 100)}%
+                        {isWinner && (
+                            <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4">
+                                <div className="text-2xl font-bold text-green-600 mb-2">
+                                    {currentScore} points
+                                </div>
+                                <div className="text-sm text-green-700">
+                                    🎯 {game.attempts.length} tentatives • ⏱️ {formatTime(timer)}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Boutons d'action */}
@@ -519,6 +611,29 @@ export const GamePlay: React.FC = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal d'élimination */}
+            <EliminationModal
+                isOpen={elimination.showEliminationModal}
+                onClose={elimination.closeEliminationModal}
+                attemptsMade={elimination.eliminationData.attemptsMade}
+                maxAttempts={elimination.eliminationData.maxAttempts}
+                score={elimination.eliminationData.score}
+                difficulty={game?.difficulty?.charAt(0).toUpperCase() + game?.difficulty?.slice(1) || 'Medium'}
+                gameMode={game?.game_mode === 'single' ? 'solo' : 'multiplayer'}
+                gameFinished={isGameFinished}
+                otherPlayersRemaining={game?.participants?.filter(p => p.status === 'active').length || 0}
+                solution={game?.solution}
+            />
+
+            {/* Notification d'élimination pour autres joueurs */}
+            <EliminationNotification
+                playerName={elimination.eliminatedPlayerName}
+                attempts={elimination.eliminationData.attemptsMade}
+                maxAttempts={elimination.eliminationData.maxAttempts}
+                show={elimination.showEliminationNotification}
+                onClose={elimination.closeEliminationNotification}
+            />
         </div>
     );
 };
