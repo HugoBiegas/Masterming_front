@@ -1,130 +1,126 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { useNotification } from '@/contexts/NotificationContext';
 import { gameService } from '@/services/game';
-import { GameType, GameMode, Difficulty } from '@/types/game';
+import { GameType, GameMode, Difficulty, GameCreateRequest } from '@/types/game';
 import { DIFFICULTY_CONFIGS, GAME_TYPE_INFO } from '@/utils/constants';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export const SoloGameCreation: React.FC = () => {
     const navigate = useNavigate();
-    const { showSuccess, showError, showInfo, showWarning } = useNotification();
+    const { showError, showSuccess, showWarning } = useNotification();
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<Partial<GameCreateRequest>>({
         game_type: GameType.CLASSIC,
+        game_mode: GameMode.SINGLE,
         difficulty: Difficulty.MEDIUM,
-        quantum_enabled: false
+        quantum_enabled: false,
+        max_players: 1,
+        is_private: false,
+        allow_spectators: false,
+        enable_chat: false
     });
 
-    const handleCreateGame = async () => {
+    const handleCreateGame = useCallback(async () => {
         try {
             setLoading(true);
-            setError('');
+            showWarning('🎮 Création de la partie en cours...');
 
-            showInfo('🎮 Création de votre partie en cours...');
-
-            const selectedDifficulty = DIFFICULTY_CONFIGS[formData.difficulty];
-
-            // ✅ Structure corrigée selon l'API et les types
             const gameData = {
                 game_type: formData.game_type,
                 game_mode: GameMode.SINGLE,
                 difficulty: formData.difficulty,
                 max_players: 1,
-                is_public: true,  // ✅ Utilise is_public maintenant
+                is_private: false,
                 allow_spectators: false,
                 enable_chat: false,
-                quantum_enabled: formData.quantum_enabled,
-                settings: {
-                    combination_length: selectedDifficulty.length,
-                    color_count: selectedDifficulty.colors,
-                    max_attempts: selectedDifficulty.attempts,
-                    time_limit: 600,
-                    quantum_hints_enabled: formData.quantum_enabled
-                }
+                quantum_enabled: formData.quantum_enabled
             };
 
-            console.log('🚀 Données envoyées à l\'API:', gameData);
+            // Tentative de création avec auto_leave=true pour éviter les conflits
+            const gameDataWithAutoLeave: GameCreateRequest = {
+                game_type: formData.game_type!,
+                game_mode: GameMode.SINGLE,
+                difficulty: formData.difficulty!,
+                max_players: 1,
+                is_private: false,
+                allow_spectators: false,
+                enable_chat: false,
+                quantum_enabled: formData.quantum_enabled || false,
+                auto_leave: true // Force auto-leave pour éviter les erreurs
+            };
 
-            const game = await gameService.createGame(gameData);
+            const response = await gameService.createGameWithAutoLeave(gameDataWithAutoLeave);
 
-            console.log('✅ Partie créée avec succès:', game);
+            // Vérifier que la réponse contient bien un ID de partie
+            const gameId = response.id;
 
-            showSuccess(`🎉 Partie créée avec succès ! ID: ${game.id}`);
-            showInfo(`🎯 Difficulté: ${formData.difficulty} - ${selectedDifficulty.colors} couleurs, ${selectedDifficulty.length} positions`);
+            if (!gameId) {
+                throw new Error('ID de partie manquant dans la réponse');
+            }
 
-            setTimeout(() => {
-                navigate(`/game/${game.id}`);
-            }, 1500);
+            showSuccess('✅ Partie créée avec succès !');
+
+            // Navigation avec gestion d'erreur
+            try {
+                navigate(`/game/${gameId}`, {
+                    replace: true, // Remplace l'entrée d'historique actuelle
+                    state: { fromCreation: true } // État pour identifier la source
+                });
+            } catch (navigationError) {
+                console.error('Erreur de navigation:', navigationError);
+                // Fallback : utiliser window.location si navigate échoue
+                window.location.href = `/game/${gameId}`;
+            }
 
         } catch (err: any) {
-            console.error('❌ Erreur détaillée:', err);
+            console.error('Erreur lors de la création:', err);
 
-            if (err.response) {
-                const status = err.response.status;
-                const detail = err.response.data?.detail || err.response.data?.message || 'Erreur inconnue';
+            // Gestion des erreurs spécifiques
+            let errorMessage = 'Erreur lors de la création de la partie';
 
-                console.error('Status:', status, 'Detail:', detail);
+            if (err.response?.status === 409) {
+                // Conflit - utilisateur déjà dans une partie
+                errorMessage = 'Vous êtes déjà dans une partie active. Tentative de résolution...';
+                showWarning(errorMessage);
 
-                switch (status) {
-                    case 400:
-                        setError(`Données invalides: ${detail}`);
-                        showError(`❌ Données invalides: ${detail}`);
-                        break;
-                    case 401:
-                        setError('Session expirée. Veuillez vous reconnecter.');
-                        showWarning('⚠️ Session expirée. Veuillez vous reconnecter.');
-                        setTimeout(() => navigate('/'), 2000);
-                        break;
-                    case 422:
-                        setError(`Erreur de validation: ${detail}`);
-                        showError(`❌ Erreur de validation: ${detail}`);
-                        break;
-                    case 500:
-                        setError('Erreur serveur. Veuillez réessayer.');
-                        showError('💥 Erreur serveur. Veuillez réessayer dans quelques instants.');
-                        break;
-                    default:
-                        setError(`Erreur (${status}): ${detail}`);
-                        showError(`❌ Erreur (${status}): ${detail}`);
+                // Tenter de quitter les parties actives et réessayer
+                try {
+                    await gameService.leaveAllActiveGames();
+                    showSuccess('✅ Parties actives quittées, nouvelle tentative...');
+
+                    // Réessayer la création
+                    setTimeout(() => {
+                        handleCreateGame();
+                    }, 1000);
+                    return;
+
+                } catch (leaveError) {
+                    console.error('Erreur lors du leave:', leaveError);
+                    errorMessage = 'Impossible de quitter les parties actives. Rechargez la page.';
                 }
-            } else if (err.request) {
-                const errorMsg = 'Impossible de contacter le serveur. Vérifiez votre connexion.';
-                setError(errorMsg);
-                showError(`🌐 ${errorMsg}`);
-            } else {
-                const errorMsg = `Erreur: ${err.message}`;
-                setError(errorMsg);
-                showError(`💥 ${errorMsg}`);
+            } else if (err.response?.status === 401) {
+                errorMessage = 'Session expirée. Reconnectez-vous.';
+                // Rediriger vers la page de connexion
+                setTimeout(() => navigate('/'), 2000);
+            } else if (err.response?.status === 400) {
+                errorMessage = err.response.data?.detail || 'Données de création invalides';
+            } else if (!err.response) {
+                errorMessage = 'Erreur de connexion. Vérifiez votre connexion internet.';
             }
+
+            showError(errorMessage);
         } finally {
             setLoading(false);
         }
-    };
+    }, [formData, navigate, showError, showSuccess, showWarning]);
 
-    const selectedDifficulty = DIFFICULTY_CONFIGS[formData.difficulty];
+    const handleBack = useCallback(() => {
+        navigate('/modes');
+    }, [navigate]);
 
-    const handleDifficultyChange = (difficulty: Difficulty) => {
-        setFormData(prev => ({ ...prev, difficulty }));
-        const config = DIFFICULTY_CONFIGS[difficulty];
-        showInfo(`🎯 Difficulté changée: ${difficulty} (${config.colors} couleurs, ${config.length} positions, ${config.attempts} tentatives)`);
-    };
-
-    const handleGameTypeChange = (type: GameType) => {
-        setFormData(prev => ({ ...prev, game_type: type }));
-        showInfo(`🎮 Type de jeu sélectionné: ${GAME_TYPE_INFO[type].name}`);
-    };
-
-    const handleQuantumToggle = (enabled: boolean) => {
-        setFormData(prev => ({ ...prev, quantum_enabled: enabled }));
-        if (enabled) {
-            showSuccess('⚛️ Fonctionnalités quantiques activées !');
-        } else {
-            showInfo('⚛️ Fonctionnalités quantiques désactivées');
-        }
-    };
+    const selectedDifficulty = formData.difficulty ? DIFFICULTY_CONFIGS[formData.difficulty] : DIFFICULTY_CONFIGS[Difficulty.MEDIUM];
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -137,12 +133,6 @@ export const SoloGameCreation: React.FC = () => {
                         <p className="text-gray-600">Configurez votre partie de Mastermind</p>
                     </div>
 
-                    {error && (
-                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                            {error}
-                        </div>
-                    )}
-
                     <div className="space-y-6">
                         {/* Type de jeu */}
                         <div>
@@ -153,8 +143,9 @@ export const SoloGameCreation: React.FC = () => {
                                 {Object.values(GameType).map((type) => (
                                     <button
                                         key={type}
-                                        onClick={() => handleGameTypeChange(type)}
-                                        className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                        onClick={() => setFormData(prev => ({ ...prev, game_type: type }))}
+                                        disabled={loading}
+                                        className={`p-4 border-2 rounded-lg text-left transition-all disabled:opacity-50 ${
                                             formData.game_type === type
                                                 ? 'border-blue-500 bg-blue-50'
                                                 : 'border-gray-300 hover:border-gray-400'
@@ -176,8 +167,9 @@ export const SoloGameCreation: React.FC = () => {
                                 {Object.entries(DIFFICULTY_CONFIGS).map(([difficulty, config]) => (
                                     <button
                                         key={difficulty}
-                                        onClick={() => handleDifficultyChange(difficulty as Difficulty)}
-                                        className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
+                                        onClick={() => setFormData(prev => ({ ...prev, difficulty: difficulty as Difficulty }))}
+                                        disabled={loading}
+                                        className={`w-full p-4 border-2 rounded-lg text-left transition-all disabled:opacity-50 ${
                                             formData.difficulty === difficulty
                                                 ? 'border-blue-500 bg-blue-50'
                                                 : 'border-gray-300 hover:border-gray-400'
@@ -204,8 +196,9 @@ export const SoloGameCreation: React.FC = () => {
                                     <input
                                         type="checkbox"
                                         checked={formData.quantum_enabled}
-                                        onChange={(e) => handleQuantumToggle(e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                        onChange={(e) => setFormData(prev => ({ ...prev, quantum_enabled: e.target.checked }))}
+                                        disabled={loading}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                                     />
                                     <span className="ml-2 text-sm text-gray-700">
                                         Activer les fonctionnalités quantiques avancées
@@ -218,7 +211,7 @@ export const SoloGameCreation: React.FC = () => {
                         <div className="bg-gray-50 p-4 rounded-lg">
                             <h3 className="font-medium mb-2">Configuration de la partie :</h3>
                             <ul className="text-sm text-gray-600 space-y-1">
-                                <li>• Type : {GAME_TYPE_INFO[formData.game_type].name}</li>
+                                <li>• Type : {formData.game_type ? GAME_TYPE_INFO[formData.game_type].name : ''}</li>
                                 <li>• Difficulté : {formData.difficulty}</li>
                                 <li>• Couleurs disponibles : {selectedDifficulty.colors}</li>
                                 <li>• Positions à deviner : {selectedDifficulty.length}</li>
@@ -228,10 +221,12 @@ export const SoloGameCreation: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Boutons d'action */}
                     <div className="flex space-x-4 mt-8">
                         <button
-                            onClick={() => navigate('/modes')}
-                            className="flex-1 bg-gray-500 text-white py-3 px-6 rounded-lg hover:bg-gray-600 transition-colors"
+                            onClick={handleBack}
+                            disabled={loading}
+                            className="flex-1 bg-gray-500 text-white py-3 px-6 rounded-lg hover:bg-gray-600 disabled:bg-gray-300 transition-colors font-medium"
                         >
                             Retour
                         </button>
@@ -239,7 +234,7 @@ export const SoloGameCreation: React.FC = () => {
                         <button
                             onClick={handleCreateGame}
                             disabled={loading}
-                            className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+                            className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 transition-colors font-medium flex items-center justify-center min-h-[48px]"
                         >
                             {loading ? (
                                 <>
@@ -251,6 +246,18 @@ export const SoloGameCreation: React.FC = () => {
                             )}
                         </button>
                     </div>
+
+                    {/* Messages d'aide */}
+                    {loading && (
+                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center gap-2">
+                                <LoadingSpinner size="sm" />
+                                <span className="text-sm text-blue-700">
+                                    Création en cours... Veuillez patienter, vous allez être redirigé vers votre partie.
+                                </span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

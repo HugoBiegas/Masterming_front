@@ -1,3 +1,4 @@
+// src/components/common/Toast.tsx
 import React, { useEffect, useState } from 'react';
 
 interface ToastProps {
@@ -14,61 +15,53 @@ export const Toast: React.FC<ToastProps> = ({
                                                 type,
                                                 isVisible,
                                                 onClose,
-                                                duration = 5000,
+                                                duration = 2000, // Réduit de 5000ms à 2000ms
                                                 index = 0
                                             }) => {
     const [isClosing, setIsClosing] = useState(false);
     const [timeLeft, setTimeLeft] = useState(duration);
 
     useEffect(() => {
-        console.log(`🍞 Toast ${type} initialisé: "${message}" (visible: ${isVisible}, durée: ${duration}ms, index: ${index})`);
-
         if (isVisible && duration > 0) {
             // Timer principal pour fermer la notification
             const mainTimer = setTimeout(() => {
-                console.log(`⏰ Toast ${type} - Timer expiré après ${duration}ms`);
                 setIsClosing(true);
                 setTimeout(() => {
-                    console.log(`🗑️ Toast ${type} - Fermeture automatique`);
                     onClose();
                 }, 300); // Temps pour l'animation de sortie
             }, duration);
 
-            // Timer pour mettre à jour le temps restant
+            // Timer pour mettre à jour le temps restant (optionnel, pour une barre de progression)
             const countdownTimer = setInterval(() => {
                 setTimeLeft(prev => Math.max(0, prev - 100));
             }, 100);
 
             return () => {
-                console.log(`🧹 Toast ${type} - Nettoyage des timers`);
                 clearTimeout(mainTimer);
                 clearInterval(countdownTimer);
             };
         }
-    }, [isVisible, duration, onClose, message, type, index]);
+    }, [isVisible, duration, onClose]);
 
-    if (!isVisible) {
-        console.log(`👻 Toast ${type} non visible - pas de rendu`);
-        return null;
-    }
+    if (!isVisible) return null;
 
     const getToastStyles = () => {
         const baseStyles = `
-            w-full p-4 rounded-lg shadow-2xl transition-all duration-300 transform relative overflow-hidden border-2
+            w-full p-3 rounded-lg shadow-lg transition-all duration-300 transform relative overflow-hidden
             ${isClosing ? 'animate-slide-out opacity-0 scale-95' : 'animate-slide-in'}
         `;
 
         switch (type) {
             case 'success':
-                return `${baseStyles} bg-green-500 text-white border-green-700 shadow-green-500/50`;
+                return `${baseStyles} bg-green-500 text-white border-l-4 border-green-700`;
             case 'error':
-                return `${baseStyles} bg-red-500 text-white border-red-700 shadow-red-500/50`;
+                return `${baseStyles} bg-red-500 text-white border-l-4 border-red-700`;
             case 'warning':
-                return `${baseStyles} bg-yellow-500 text-white border-yellow-700 shadow-yellow-500/50`;
+                return `${baseStyles} bg-yellow-500 text-white border-l-4 border-yellow-700`;
             case 'info':
-                return `${baseStyles} bg-blue-500 text-white border-blue-700 shadow-blue-500/50`;
+                return `${baseStyles} bg-blue-500 text-white border-l-4 border-blue-700`;
             default:
-                return `${baseStyles} bg-gray-500 text-white border-gray-700 shadow-gray-500/50`;
+                return `${baseStyles} bg-gray-500 text-white border-l-4 border-gray-700`;
         }
     };
 
@@ -89,57 +82,38 @@ export const Toast: React.FC<ToastProps> = ({
 
     const progressPercentage = duration > 0 ? ((duration - timeLeft) / duration) * 100 : 0;
 
-    const handleCloseClick = () => {
-        console.log(`🔘 Toast ${type} - Fermeture manuelle demandée`);
-        setIsClosing(true);
-        setTimeout(() => {
-            console.log(`🗑️ Toast ${type} - Fermeture manuelle effectuée`);
-            onClose();
-        }, 300);
-    };
-
-    console.log(`🎨 Rendu Toast ${type} (index ${index}): "${message}"`);
-
     return (
         <div
             className={getToastStyles()}
             style={{
-                animationDelay: `${index * 100}ms`, // Décalage pour l'animation en cascade
-                zIndex: 9999 + index, // Z-index progressif pour éviter les superpositions
-                position: 'relative'
+                animationDelay: `${index * 50}ms` // Réduit le délai d'animation
             }}
         >
             {/* Barre de progression */}
             {duration > 0 && (
-                <div
-                    className="absolute bottom-0 left-0 h-1 bg-white bg-opacity-30 transition-all duration-100"
-                    style={{ width: `${progressPercentage}%` }}
-                ></div>
+                <div className="absolute bottom-0 left-0 h-1 bg-white bg-opacity-30 transition-all duration-100"
+                     style={{ width: `${progressPercentage}%` }}></div>
             )}
 
             <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-3 flex-1">
-                    <span className="text-xl flex-shrink-0 mt-0.5 drop-shadow-sm">{getIcon()}</span>
+                <div className="flex items-start space-x-2 flex-1">
+                    <span className="text-base flex-shrink-0 mt-0.5">{getIcon()}</span>
                     <div className="flex-1">
-                        <p className="font-medium text-sm leading-relaxed drop-shadow-sm">{message}</p>
+                        <p className="font-medium text-sm leading-relaxed">{message}</p>
                     </div>
                 </div>
 
                 <button
-                    onClick={handleCloseClick}
-                    className="ml-3 text-white hover:text-gray-200 transition-colors flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full hover:bg-white hover:bg-opacity-20 drop-shadow-sm"
+                    onClick={() => {
+                        setIsClosing(true);
+                        setTimeout(onClose, 300);
+                    }}
+                    className="ml-2 text-white hover:text-gray-200 transition-colors flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full hover:bg-white hover:bg-opacity-20"
                     title="Fermer"
                 >
-                    <span className="text-sm font-bold">✕</span>
+                    <span className="text-xs font-bold">✕</span>
                 </button>
             </div>
-
-            {/* Debug indicator en développement */}
-            {process.env.NODE_ENV === 'development' && (
-                <div className="absolute top-1 right-8 text-xs opacity-50 bg-black bg-opacity-25 px-1 rounded">
-                    #{index + 1} | {Math.round(timeLeft / 1000)}s
-                </div>
-            )}
         </div>
     );
 };

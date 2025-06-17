@@ -1,5 +1,5 @@
 // src/contexts/NotificationContext.tsx
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { Toast } from '@/components/common/Toast';
 
 type NotificationType = 'success' | 'error' | 'warning' | 'info';
@@ -8,6 +8,7 @@ interface Notification {
     id: string;
     message: string;
     type: NotificationType;
+    timestamp: number;
 }
 
 interface NotificationContextType {
@@ -24,24 +25,55 @@ interface NotificationProviderProps {
     children: ReactNode;
 }
 
+const MAX_NOTIFICATIONS = 5; // Maximum 5 toasts affichés
+const NOTIFICATION_DURATION = 2000; // 2 secondes
+
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
 
-    const showNotification = (message: string, type: NotificationType) => {
+    // Fonction optimisée pour ajouter des notifications
+    const showNotification = useCallback((message: string, type: NotificationType) => {
+        // Éviter les doublons récents (même message dans les 500ms)
+        const now = Date.now();
+        const isDuplicate = notifications.some(notification =>
+            notification.message === message &&
+            notification.type === type &&
+            (now - notification.timestamp) < 500
+        );
+
+        if (isDuplicate) {
+            return; // Ignorer les doublons
+        }
+
         const id = Math.random().toString(36).substr(2, 9);
-        const newNotification: Notification = { id, message, type };
+        const newNotification: Notification = {
+            id,
+            message,
+            type,
+            timestamp: now
+        };
 
-        setNotifications(prev => [...prev, newNotification]);
-    };
+        setNotifications(prev => {
+            const updated = [...prev, newNotification];
 
-    const removeNotification = (id: string) => {
+            // Si on dépasse la limite, supprimer les plus anciens
+            if (updated.length > MAX_NOTIFICATIONS) {
+                return updated.slice(-MAX_NOTIFICATIONS);
+            }
+
+            return updated;
+        });
+    }, [notifications]);
+
+    const removeNotification = useCallback((id: string) => {
         setNotifications(prev => prev.filter(notification => notification.id !== id));
-    };
+    }, []);
 
-    const showSuccess = (message: string) => showNotification(message, 'success');
-    const showError = (message: string) => showNotification(message, 'error');
-    const showWarning = (message: string) => showNotification(message, 'warning');
-    const showInfo = (message: string) => showNotification(message, 'info');
+    // Fonctions spécialisées pour chaque type
+    const showSuccess = useCallback((message: string) => showNotification(message, 'success'), [showNotification]);
+    const showError = useCallback((message: string) => showNotification(message, 'error'), [showNotification]);
+    const showWarning = useCallback((message: string) => showNotification(message, 'warning'), [showNotification]);
+    const showInfo = useCallback((message: string) => showNotification(message, 'info'), [showNotification]);
 
     return (
         <NotificationContext.Provider value={{
@@ -54,15 +86,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
             {children}
 
             {/* Container des toasts - Centre haut de l'écran */}
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 space-y-3 max-w-md w-full px-4">
-                {notifications.map((notification, index) => (
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 space-y-2 max-w-md w-full px-4">
+                {notifications.slice(-MAX_NOTIFICATIONS).map((notification, index) => (
                     <Toast
                         key={notification.id}
                         message={notification.message}
                         type={notification.type}
                         isVisible={true}
                         onClose={() => removeNotification(notification.id)}
-                        duration={5000}
+                        duration={NOTIFICATION_DURATION}
                         index={index}
                     />
                 ))}

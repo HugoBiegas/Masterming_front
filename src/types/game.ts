@@ -37,7 +37,6 @@ export interface DifficultyConfig {
     description: string;
 }
 
-// ✅ Interface corrigée selon l'API Postman
 export interface GameCreateRequest {
     game_type: GameType;
     game_mode: GameMode;
@@ -45,13 +44,35 @@ export interface GameCreateRequest {
     max_attempts?: number;
     time_limit?: number;
     max_players: number;
-    is_public: boolean;  // ✅ Corrigé de "is_private" à "is_public"
+    is_private: boolean;
     password?: string;
     room_code?: string;
     allow_spectators: boolean;
     enable_chat: boolean;
     quantum_enabled: boolean;
     settings?: Record<string, any>;
+    auto_leave?: boolean; // AJOUTÉ : pour l'auto-leave
+}
+
+// Interface pour la réponse de création de partie
+export interface GameCreateResponse {
+    id: string;
+    room_code: string;
+    game_type: GameType;
+    game_mode: GameMode;
+    difficulty: Difficulty;
+    status: GameStatus;
+    max_players: number;
+    combination_length: number;
+    available_colors: number;
+    created_at: string;
+    message: string;
+    auto_leave_performed?: boolean;
+    leave_summary?: {
+        total_left: number;
+        games_cancelled: number;
+        games_maintained: number;
+    };
 }
 
 export interface Game {
@@ -102,6 +123,8 @@ export interface Attempt {
 
 export interface AttemptRequest {
     combination: number[];
+    use_quantum_hint?: boolean;
+    hint_type?: string;
 }
 
 export interface AttemptResult {
@@ -113,6 +136,31 @@ export interface AttemptResult {
     is_winning: boolean;
     score: number;
     time_taken?: number;
-    game_status: GameStatus;
+    game_finished?: boolean;
+    game_status?: GameStatus;
+    solution?: number[];
+    quantum_hint_used?: boolean;
     remaining_attempts?: number;
+}
+
+// Interface pour les réponses API génériques
+export interface ApiResponse<T> {
+    data: T;
+    message?: string;
+    status?: number;
+}
+
+// Interface pour quitter les parties
+export interface LeaveGameResponse {
+    message: string;
+    summary: {
+        total_left: number;
+        games_cancelled: number;
+        games_maintained: number;
+    };
+    details: {
+        left_games: any[];
+        cancelled_games: any[];
+        maintained_games: any[];
+    };
 }

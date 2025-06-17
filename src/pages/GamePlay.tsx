@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -7,17 +7,17 @@ import { GameBoard } from '@/components/game/GameBoard';
 import { ColorPicker } from '@/components/game/ColorPicker';
 import { GameControls } from '@/components/game/GameControls';
 import { AttemptHistory } from '@/components/game/AttemptHistory';
-import { StartGameButton } from '@/components/game/StartGameButton'; // ✅ Nouveau import
 import { useGame } from '@/hooks/useGame';
 import { useNotification } from '@/contexts/NotificationContext';
 import { GameStatus } from '@/types/game';
 import { DIFFICULTY_CONFIGS } from '@/utils/constants';
+import { gameService } from '@/services/game';
 
 export const GamePlay: React.FC = () => {
     const { gameId } = useParams<{ gameId: string }>();
     const navigate = useNavigate();
-    const { game, loading, error, makeAttempt, startGame, isGameFinished, isGameActive, isGameWaiting } = useGame(gameId); // ✅ Ajout startGame et isGameWaiting
-    const { showError, showSuccess, showInfo, showWarning } = useNotification();
+    const { game, loading, error, makeAttempt, isGameFinished, isGameActive, refreshGame } = useGame(gameId);
+    const { showError, showSuccess, showWarning } = useNotification();
 
     const [currentCombination, setCurrentCombination] = useState<number[]>([]);
     const [selectedColor, setSelectedColor] = useState<number | null>(null);
@@ -26,42 +26,29 @@ export const GamePlay: React.FC = () => {
     const [currentScore, setCurrentScore] = useState(0);
     const [timer, setTimer] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
+    const [isLeaving, setIsLeaving] = useState(false);
+    const [isStarting, setIsStarting] = useState(false);
 
-    // ✅ Nouvelle fonction pour démarrer la partie
-    const handleStartGame = async () => {
-        try {
-            showInfo('🚀 Démarrage de la partie...');
+    // Refs pour éviter les boucles infinies
+    const hasShownWelcomeMessage = useRef(false);
+    const hasShownGameFinishedMessage = useRef(false);
+    const hasShownVictoryMessage = useRef(false);
 
-            const updatedGame = await startGame();
-
-            if (updatedGame) {
-                showSuccess('🎯 Partie démarrée ! Bonne chance !');
-                showInfo(`💪 Vous avez ${updatedGame.max_attempts || 'un nombre illimité'} de tentatives pour réussir !`);
-                setIsTimerRunning(true);
-            }
-        } catch (err) {
-            console.error('Erreur lors du démarrage:', err);
-            showError('❌ Impossible de démarrer la partie. Veuillez réessayer.');
-        }
-    };
-
-    // Initialiser la combinaison actuelle
+    // Initialiser la combinaison actuelle - CORRECTION: dépendances spécifiques
     useEffect(() => {
-        if (game && currentCombination.length === 0) {
+        if (game && game.combination_length && currentCombination.length === 0) {
             const initialCombination = new Array(game.combination_length).fill(0);
             setCurrentCombination(initialCombination);
 
-            // ✅ Ne plus démarrer automatiquement le timer ici
-            if (game.status === GameStatus.ACTIVE) {
-                setIsTimerRunning(true);
-                showSuccess('🎯 Partie en cours ! Trouvez la combinaison secrète !');
-            } else if (game.status === GameStatus.WAITING) {
-                showInfo('⏳ Partie créée ! Cliquez sur "DÉMARRER" pour commencer votre défi.');
+            // Message de bienvenue une seule fois
+            if (game.status === GameStatus.ACTIVE && !hasShownWelcomeMessage.current) {
+                hasShownWelcomeMessage.current = true;
+                showSuccess(`🎯 Partie démarrée ! ${game.combination_length} positions, ${game.available_colors} couleurs`);
             }
         }
-    }, [game, currentCombination.length, showSuccess, showInfo]);
+    }, [game?.id, game?.combination_length, game?.status, game?.available_colors]); // Dépendances spécifiques
 
-    // Timer
+    // Timer - CORRECTION: dépendances spécifiques
     useEffect(() => {
         let interval: NodeJS.Timeout | null = null;
 
@@ -76,114 +63,161 @@ export const GamePlay: React.FC = () => {
         };
     }, [isTimerRunning, isGameActive]);
 
-    // Alertes pour tentatives restantes
+    // Alerte tentatives restantes - CORRECTION: dépendances spécifiques + ref pour éviter spam
+    const lastAlertAttempts = useRef<number | null>(null);
     useEffect(() => {
         if (game && game.max_attempts && isGameActive) {
             const remainingAttempts = game.max_attempts - game.attempts.length;
-            if (remainingAttempts === 3) {
-                showWarning('⚠️ Plus que 3 tentatives restantes !');
-            } else if (remainingAttempts === 1) {
-                showError('🚨 DERNIÈRE TENTATIVE ! Soyez prudent !');
+
+            // Éviter de répéter la même alerte
+            if (lastAlertAttempts.current !== remainingAttempts) {
+                lastAlertAttempts.current = remainingAttempts;
+
+                if (remainingAttempts === 1) {
+                    showError('🚨 DERNIÈRE TENTATIVE !');
+                } else if (remainingAttempts === 3) {
+                    showWarning('⚠️ Plus que 3 tentatives !');
+                }
             }
         }
-    }, [game?.attempts.length, game?.max_attempts, isGameActive, showWarning, showError]);
+    }, [game?.attempts?.length, game?.max_attempts, isGameActive]); // Dépendances spécifiques
 
-    // Vérifier si le jeu est terminé
+    // Vérifier si le jeu est terminé - CORRECTION: éviter la boucle infinie
     useEffect(() => {
-        if (isGameFinished && game) {
+        if (isGameFinished && game && !hasShownGameFinishedMessage.current) {
+            hasShownGameFinishedMessage.current = true;
             setIsTimerRunning(false);
 
+            // Vérifier si le joueur a gagné
             const lastAttempt = game.attempts[game.attempts.length - 1];
             if (lastAttempt && lastAttempt.is_correct) {
                 setIsWinner(true);
                 setCurrentScore(lastAttempt.attempt_score);
-                showSuccess(`🏆 VICTOIRE ! Combinaison trouvée en ${game.attempts.length} tentatives !`);
-                showInfo(`💎 Score final : ${lastAttempt.attempt_score} points`);
+
+                // Message de victoire une seule fois
+                if (!hasShownVictoryMessage.current) {
+                    hasShownVictoryMessage.current = true;
+                    showSuccess(`🏆 VICTOIRE en ${game.attempts.length} tentatives !`);
+                }
             } else {
                 setIsWinner(false);
-                showError('💔 Défaite ! La combinaison reste secrète...');
-                showInfo('🎯 Ne vous découragez pas, réessayez avec une nouvelle partie !');
+                showError('💔 Défaite ! Tentez votre chance avec une nouvelle partie !');
             }
 
-            setTimeout(() => setShowResult(true), 2000);
+            // Afficher le modal après un court délai
+            setTimeout(() => setShowResult(true), 1500);
         }
-    }, [isGameFinished, game, showSuccess, showError, showInfo]);
+    }, [isGameFinished, game?.id]); // Dépendances spécifiques, pas game complet
+
+    // Fonction pour quitter la partie
+    const handleLeaveGame = useCallback(async () => {
+        if (isLeaving) return; // Éviter les clics multiples
+
+        try {
+            setIsLeaving(true);
+            showWarning('🚪 Vous quittez la partie...');
+
+            // Appeler l'API pour quitter toutes les parties actives
+            await gameService.leaveAllActiveGames();
+
+            // Rediriger vers la sélection de mode
+            navigate('/modes');
+            showSuccess('✅ Vous avez quitté la partie');
+
+        } catch (error) {
+            console.error('Erreur lors de la sortie de la partie:', error);
+            showError('❌ Erreur lors de la sortie de la partie');
+        } finally {
+            setIsLeaving(false);
+        }
+    }, [isLeaving, navigate, showWarning, showSuccess, showError]);
+
+    // Fonction pour démarrer la partie
+    const handleStartGame = useCallback(async () => {
+        if (!game || isStarting) return;
+
+        try {
+            setIsStarting(true);
+            showWarning('🚀 Démarrage de la partie...');
+
+            await gameService.startGame(game.id);
+
+            // Rafraîchir les données de la partie
+            await refreshGame();
+
+            showSuccess('✅ Partie démarrée !');
+            setIsTimerRunning(true);
+
+        } catch (error) {
+            console.error('Erreur lors du démarrage:', error);
+            showError('❌ Erreur lors du démarrage de la partie');
+        } finally {
+            setIsStarting(false);
+        }
+    }, [game, isStarting, showWarning, showSuccess, showError, refreshGame]);
 
     // Logique pour la sélection de couleur
-    const handlePositionClick = (position: number) => {
+    const handlePositionClick = useCallback((position: number) => {
         if (!isGameActive) {
-            if (isGameWaiting) {
-                showWarning('⏳ Veuillez d\'abord démarrer la partie !');
-            } else {
-                showError('⏸️ La partie n\'est plus active !');
-            }
+            showError('⏸️ La partie n\'est plus active !');
             return;
         }
 
         const newCombination = [...currentCombination];
 
         if (selectedColor && selectedColor > 0) {
+            // Placer la couleur à la position cliquée
             newCombination[position] = selectedColor;
             setCurrentCombination(newCombination);
-            showInfo(`🎨 Couleur placée en position ${position + 1}`);
         } else {
+            // Si aucune couleur sélectionnée et qu'il y a déjà une couleur à cette position
             if (newCombination[position] > 0) {
+                // Supprimer la couleur de cette position
                 newCombination[position] = 0;
                 setCurrentCombination(newCombination);
-                showInfo(`🗑️ Couleur supprimée de la position ${position + 1}`);
             } else {
-                showWarning('🎨 Veuillez d\'abord sélectionner une couleur !');
+                // Aucune couleur sélectionnée et position vide
+                showWarning('🎨 Sélectionnez d\'abord une couleur !');
             }
         }
-    };
+    }, [currentCombination, selectedColor, isGameActive, showError, showWarning]);
 
     // Logique pour la sélection de couleur
-    const handleColorSelect = (color: number) => {
+    const handleColorSelect = useCallback((color: number) => {
         if (!isGameActive) {
-            if (isGameWaiting) {
-                showWarning('⏳ Veuillez d\'abord démarrer la partie !');
-            } else {
-                showError('⏸️ La partie n\'est plus active !');
-            }
+            showError('⏸️ La partie n\'est plus active !');
             return;
         }
 
-        if (color === 0) {
+        if (color === 0 || color === selectedColor) {
+            // Désélectionner
             setSelectedColor(null);
-            showInfo('🔄 Aucune couleur sélectionnée');
-        } else if (color === selectedColor) {
-            setSelectedColor(null);
-            showInfo('🔄 Couleur désélectionnée');
         } else {
+            // Sélectionner une nouvelle couleur
             setSelectedColor(color);
-            showSuccess('✅ Couleur sélectionnée ! Cliquez sur une position pour la placer.');
         }
-    };
+    }, [selectedColor, isGameActive, showError]);
 
-    const resetCombination = () => {
+    const resetCombination = useCallback(() => {
         if (game) {
             setCurrentCombination(new Array(game.combination_length).fill(0));
             setSelectedColor(null);
-            showInfo('🔄 Combinaison réinitialisée');
         }
-    };
+    }, [game?.combination_length]);
 
     const canSubmit = currentCombination.every(color => color > 0) && isGameActive;
 
-    const handleSubmit = async () => {
+    const handleSubmit = useCallback(async () => {
         if (!canSubmit || !game) {
-            if (isGameWaiting) {
-                showWarning('⏳ Veuillez d\'abord démarrer la partie !');
-            } else if (!isGameActive) {
+            if (!isGameActive) {
                 showError('⏸️ La partie n\'est plus active !');
             } else {
-                showWarning('⚠️ Veuillez compléter votre combinaison avant de valider !');
+                showWarning('⚠️ Complétez votre combinaison !');
             }
             return;
         }
 
         try {
-            showInfo('⏳ Validation de votre tentative en cours...');
             const result = await makeAttempt({ combination: currentCombination });
 
             if (result) {
@@ -191,60 +225,49 @@ export const GamePlay: React.FC = () => {
                     setIsWinner(true);
                     setCurrentScore(result.score);
                     setIsTimerRunning(false);
-                    showSuccess(`🎉 BRAVO ! Vous avez cassé le code ! Score: ${result.score} points`);
-                    setTimeout(() => setShowResult(true), 2500);
+                    // Le message de victoire sera géré par useEffect
+                    setTimeout(() => setShowResult(true), 1500);
                 } else if (result.game_status === GameStatus.FINISHED) {
                     setIsWinner(false);
                     setIsTimerRunning(false);
-                    showError('💔 Plus de tentatives ! Partie terminée...');
-                    setTimeout(() => setShowResult(true), 2500);
+                    setTimeout(() => setShowResult(true), 1500);
                 } else {
-                    const feedbackMessage = result.correct_positions > 0 || result.correct_colors > 0
-                        ? `🎯 Tentative ${result.attempt_number} : ${result.correct_positions} bien placées, ${result.correct_colors} mal placées`
-                        : `❌ Tentative ${result.attempt_number} : Aucune couleur correcte trouvée`;
-
-                    showInfo(feedbackMessage);
-
+                    // Feedback réduit pour éviter le spam
                     if (result.correct_positions === game.combination_length - 1) {
-                        showWarning('🔥 Très proche ! Plus qu\'une position à corriger !');
-                    } else if (result.correct_positions >= game.combination_length / 2) {
-                        showSuccess('👍 Bon travail ! Vous êtes sur la bonne voie !');
-                    } else if (result.correct_colors > 0) {
-                        showInfo('💡 Bonnes couleurs trouvées, travaillez les positions !');
+                        showWarning('🔥 Très proche ! Plus qu\'une position !');
+                    } else if (result.correct_positions > 0 || result.correct_colors > 0) {
+                        // Pas de notification pour les tentatives normales
                     }
-
                     resetCombination();
                 }
             }
         } catch (err) {
             console.error('Erreur lors de la tentative:', err);
-            showError('💥 Erreur lors de la validation de votre tentative');
+            showError('💥 Erreur lors de la validation');
         }
-    };
+    }, [canSubmit, game, isGameActive, currentCombination, makeAttempt, resetCombination, showError, showWarning]);
 
-    const handleNewGame = () => {
-        showInfo('🎮 Création d\'une nouvelle partie...');
+    const handleNewGame = useCallback(() => {
         navigate('/solo');
-    };
+    }, [navigate]);
 
-    const handleBackToMenu = () => {
-        showInfo('🏠 Retour au menu principal');
+    const handleBackToMenu = useCallback(() => {
         navigate('/modes');
-    };
+    }, [navigate]);
 
-    const formatTime = (seconds: number): string => {
+    const formatTime = useCallback((seconds: number): string => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
+    }, []);
 
+    // Gestion des états de chargement et d'erreur
     if (loading) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
                     <LoadingSpinner size="lg" />
                     <p className="mt-4 text-gray-600 text-lg">Chargement de la partie...</p>
-                    <p className="text-gray-500 text-sm mt-2">Préparation du plateau de jeu</p>
                 </div>
             </div>
         );
@@ -259,10 +282,7 @@ export const GamePlay: React.FC = () => {
                         <span className="text-2xl mb-2 block">❌</span>
                         <p className="font-medium">{error}</p>
                         <button
-                            onClick={() => {
-                                showInfo('Retour au menu principal');
-                                navigate('/modes');
-                            }}
+                            onClick={() => navigate('/modes')}
                             className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
                         >
                             Retour au menu
@@ -283,10 +303,7 @@ export const GamePlay: React.FC = () => {
                         <h2 className="text-xl font-bold text-gray-800 mb-2">Partie non trouvée</h2>
                         <p className="text-gray-600 mb-6">Cette partie n'existe pas ou a été supprimée.</p>
                         <button
-                            onClick={() => {
-                                navigate('/modes');
-                                showInfo('Retour au menu principal');
-                            }}
+                            onClick={() => navigate('/modes')}
                             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
                         >
                             Retour au menu
@@ -297,76 +314,81 @@ export const GamePlay: React.FC = () => {
         );
     }
 
-    const difficultyConfig = DIFFICULTY_CONFIGS[game.difficulty];
+    const difficultyConfig = game?.difficulty && DIFFICULTY_CONFIGS[game.difficulty]
+        ? DIFFICULTY_CONFIGS[game.difficulty]
+        : DIFFICULTY_CONFIGS['medium'];
     const remainingAttempts = game.max_attempts ? game.max_attempts - game.attempts.length : undefined;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
             <Header />
 
-            {/* ✅ Bouton de démarrage - s'affiche seulement si la partie est en attente */}
-            {isGameWaiting && (
-                <StartGameButton onStartGame={handleStartGame} />
-            )}
-
             <div className="container mx-auto py-6 px-4">
-                {/* Header de la partie */}
+                {/* Header de la partie avec bouton Leave */}
                 <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
-                    <div className="flex flex-col md:flex-row justify-between items-center">
-                        <div className="text-center md:text-left mb-4 md:mb-0">
-                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center">
+                        <div className="text-center lg:text-left mb-4 lg:mb-0 flex-1">
+                            <h1 className="text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                                 🧩 Quantum Mastermind
+                                {game?.status === 'waiting' && <span className="text-yellow-500 ml-2">⏳ En attente</span>}
+                                {game?.status === 'active' && <span className="text-green-500 ml-2">🟢 Active</span>}
+                                {game?.status === 'finished' && <span className="text-gray-500 ml-2">🏁 Terminée</span>}
                             </h1>
                             <p className="text-gray-600 mt-1">
                                 {difficultyConfig.description}
                             </p>
-                            <div className="flex items-center justify-center md:justify-start space-x-4 mt-2">
-                                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mt-2">
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                     🎨 {difficultyConfig.colors} couleurs
                                 </span>
-                                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                     🎯 {difficultyConfig.length} positions
                                 </span>
-                                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                                     🔥 Max {difficultyConfig.attempts} tentatives
                                 </span>
                             </div>
-
-                            {/* ✅ Indicateur de statut */}
-                            <div className="mt-3">
-                                {isGameWaiting && (
-                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                                        ⏳ En attente de démarrage
-                                    </span>
-                                )}
-                                {isGameActive && (
-                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                                        🎮 Partie en cours
-                                    </span>
-                                )}
-                                {isGameFinished && (
-                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-                                        🏁 Partie terminée
-                                    </span>
-                                )}
-                            </div>
                         </div>
 
-                        <div className="text-center">
-                            <div className="text-3xl font-mono text-gray-800 bg-gray-100 px-4 py-2 rounded-lg border border-gray-300">
-                                ⏱️ {formatTime(timer)}
+                        {/* Section timer et bouton Leave */}
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                            {/* Timer */}
+                            <div className="text-center">
+                                <div className="text-2xl font-mono text-gray-800 bg-gray-100 px-3 py-2 rounded-lg border border-gray-300">
+                                    ⏱️ {formatTime(timer)}
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                    <div className="font-medium">Tentative {game.attempts.length + 1} / {game.max_attempts || '∞'}</div>
+                                    {remainingAttempts !== undefined && (
+                                        <div className={`text-xs font-medium mt-1 ${
+                                            remainingAttempts <= 3 ? 'text-red-600' :
+                                                remainingAttempts <= 5 ? 'text-orange-600' : 'text-green-600'
+                                        }`}>
+                                            {remainingAttempts} restantes
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div className="text-sm text-gray-600 mt-2">
-                                <div className="font-medium">Tentative {game.attempts.length + 1} / {game.max_attempts || '∞'}</div>
-                                {remainingAttempts !== undefined && (
-                                    <div className={`text-xs font-medium mt-1 ${
-                                        remainingAttempts <= 3 ? 'text-red-600' :
-                                            remainingAttempts <= 5 ? 'text-orange-600' : 'text-green-600'
-                                    }`}>
-                                        {remainingAttempts} restantes
-                                    </div>
+
+                            {/* Bouton Leave */}
+                            <button
+                                onClick={handleLeaveGame}
+                                disabled={isLeaving}
+                                className="bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white px-4 py-2 rounded-lg transition-colors font-medium flex items-center gap-2 min-w-[120px] justify-center"
+                                title="Quitter la partie"
+                            >
+                                {isLeaving ? (
+                                    <>
+                                        <LoadingSpinner size="sm" />
+                                        <span>Sortie...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>🚪</span>
+                                        <span>Quitter</span>
+                                    </>
                                 )}
-                            </div>
+                            </button>
                         </div>
                     </div>
 
@@ -394,25 +416,46 @@ export const GamePlay: React.FC = () => {
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     {/* Zone de jeu principale */}
                     <div className="xl:col-span-2 space-y-6">
+                        {/* Plateau de jeu */}
                         <GameBoard
                             combination={currentCombination}
                             onPositionClick={handlePositionClick}
                             selectedColor={selectedColor}
-                            isActive={isGameActive} // ✅ Désactivé si partie en attente
+                            isActive={isGameActive}
                         />
 
+                        {/* Sélecteur de couleurs */}
                         <ColorPicker
                             availableColors={game.available_colors}
                             selectedColor={selectedColor}
                             onColorSelect={handleColorSelect}
                         />
 
+                        {/* Message d'attente si la partie n'est pas encore démarrée */}
+                        {game?.status === 'waiting' && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                                <div className="text-yellow-600 text-lg font-medium mb-2">
+                                    ⏳ Partie en attente de démarrage
+                                </div>
+                                <div className="text-sm text-yellow-700">
+                                    Cliquez sur "Démarrer la partie" pour commencer à jouer !
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Contrôles */}
                         <GameControls
                             onSubmit={handleSubmit}
                             onReset={resetCombination}
+                            onLeave={handleLeaveGame}
+                            onStart={handleStartGame}
                             canSubmit={canSubmit}
+                            canStart={game?.status === 'waiting'}
+                            gameStatus={game?.status}
                             remainingAttempts={remainingAttempts}
                             currentScore={currentScore}
+                            isLeaving={isLeaving}
+                            isStarting={isStarting}
                         />
                     </div>
 
@@ -434,6 +477,7 @@ export const GamePlay: React.FC = () => {
                 showCloseButton={false}
             >
                 <div className="text-center space-y-6">
+                    {/* Emoji et titre animés */}
                     <div className="space-y-4">
                         <div className={`text-8xl ${isWinner ? 'animate-bounce' : ''}`}>
                             {isWinner ? '🏆' : '💭'}
@@ -482,6 +526,7 @@ export const GamePlay: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* Taux de réussite */}
                         {game.max_attempts && (
                             <div className="mt-4 bg-white p-3 rounded-lg">
                                 <span className="text-gray-600">Efficacité</span>

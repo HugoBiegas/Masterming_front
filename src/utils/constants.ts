@@ -91,3 +91,90 @@ export const COLOR_PALETTE = [
     '#808080', // Gris
     '#000000'  // Noir
 ];
+
+// Constantes pour les notifications
+export const NOTIFICATION_DURATION = 2000; // 2 secondes
+export const MAX_NOTIFICATIONS = 5;
+
+// Constantes pour les timeouts
+export const API_TIMEOUT = 10000; // 10 secondes
+export const GAME_UPDATE_INTERVAL = 1000; // 1 seconde
+
+// Constantes pour les scores
+export const SCORE_BASE = 100;
+export const SCORE_BONUS_VICTORY = 500;
+export const SCORE_PENALTY_PER_ATTEMPT = 10;
+
+// Constantes pour les limites
+export const MAX_GAME_DURATION = 3600; // 1 heure
+export const MIN_PLAYERS = 1;
+export const MAX_PLAYERS = 8;
+export const MAX_ATTEMPTS_LIMIT = 50;
+export const MIN_COMBINATION_LENGTH = 3;
+export const MAX_COMBINATION_LENGTH = 8;
+export const MIN_COLORS = 4;
+export const MAX_COLORS = 12;
+
+// Messages d'erreur constants
+export const ERROR_MESSAGES = {
+    NETWORK_ERROR: 'Erreur de connexion réseau. Vérifiez votre connexion internet.',
+    SESSION_EXPIRED: 'Session expirée. Veuillez vous reconnecter.',
+    GAME_NOT_FOUND: 'Partie non trouvée ou supprimée.',
+    GAME_FULL: 'Cette partie est complète.',
+    GAME_NOT_ACTIVE: 'La partie n\'est plus active.',
+    INVALID_COMBINATION: 'Combinaison invalide.',
+    MAX_ATTEMPTS_REACHED: 'Nombre maximum de tentatives atteint.',
+    UNAUTHORIZED: 'Vous n\'êtes pas autorisé à effectuer cette action.',
+    ALREADY_IN_GAME: 'Vous participez déjà à une partie active.',
+    CREATION_FAILED: 'Échec de la création de la partie.',
+    LEAVE_FAILED: 'Impossible de quitter la partie.'
+};
+
+// Messages de succès constants
+export const SUCCESS_MESSAGES = {
+    GAME_CREATED: 'Partie créée avec succès !',
+    GAME_JOINED: 'Vous avez rejoint la partie !',
+    GAME_LEFT: 'Vous avez quitté la partie.',
+    GAME_WON: 'Félicitations ! Vous avez gagné !',
+    ATTEMPT_SUBMITTED: 'Tentative soumise avec succès.',
+    SETTINGS_SAVED: 'Paramètres sauvegardés.',
+    LOGIN_SUCCESS: 'Connexion réussie !',
+    LOGOUT_SUCCESS: 'Déconnexion réussie.'
+};
+
+// Configuration des animations
+export const ANIMATION_DURATION = {
+    FAST: 200,
+    MEDIUM: 300,
+    SLOW: 500,
+    TOAST: 2000
+};
+
+// Configuration responsive
+export const BREAKPOINTS = {
+    SM: 640,
+    MD: 768,
+    LG: 1024,
+    XL: 1280,
+    XXL: 1536
+};
+
+// Configuration des couleurs de thème
+export const THEME_COLORS = {
+    PRIMARY: {
+        50: '#eff6ff',
+        500: '#3b82f6',
+        600: '#2563eb',
+        700: '#1d4ed8'
+    },
+    QUANTUM: {
+        50: '#f0f9ff',
+        500: '#06b6d4',
+        600: '#0891b2',
+        700: '#0e7490'
+    },
+    SUCCESS: '#10b981',
+    ERROR: '#ef4444',
+    WARNING: '#f59e0b',
+    INFO: '#3b82f6'
+};

@@ -21,218 +21,269 @@ code {
     monospace;
 }
 
-/* ===== ANIMATIONS PERSONNALISÉES ===== */
-
-/* Animations de base */
+/* Animations personnalisées optimisées */
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-@keyframes fadeOut {
-    from {
-        opacity: 1;
-        transform: scale(1);
-    }
-    to {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-}
-
-/* Animation d'entrée pour les toasts */
-@keyframes slideInFromTop {
-    from {
-        transform: translateY(-100px) scale(0.9);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-}
-
-/* Animation de sortie pour les toasts */
-@keyframes slideOutToTop {
-    from {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-    to {
-        transform: translateY(-50px) scale(0.95);
-        opacity: 0;
-    }
-}
-
-/* ✅ Animation spéciale pour le bouton de démarrage */
-@keyframes slideInFromTopBounce {
-    0% {
-        transform: translateY(-200px) scale(0.8);
-        opacity: 0;
-    }
-    50% {
-        transform: translateY(10px) scale(1.05);
-        opacity: 0.8;
-    }
-    100% {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-}
-
-/* Animation de sortie pour le bouton de démarrage */
-@keyframes slideOutToTopFade {
-    0% {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-    100% {
-        transform: translateY(-200px) scale(0.8);
-        opacity: 0;
-    }
-}
-
-/* Animation alternative de slide in */
 @keyframes slideIn {
     from {
         transform: translateY(-20px);
         opacity: 0;
+        scale: 0.95;
     }
     to {
         transform: translateY(0);
         opacity: 1;
+        scale: 1;
     }
 }
 
-/* Animation de slide out alternative */
 @keyframes slideOut {
     from {
         transform: translateY(0) scale(1);
         opacity: 1;
     }
     to {
-        transform: translateY(-10px) scale(0.95);
+        transform: translateY(-15px) scale(0.9);
         opacity: 0;
     }
 }
 
-/* ✅ Animation de pulsation pour le bouton de démarrage */
-@keyframes startButtonPulse {
+@keyframes slideInFromTop {
+    from {
+        transform: translateY(-50px) scale(0.95);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
     0%, 100% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
-        transform: scale(1);
+        opacity: 1;
     }
     50% {
-        box-shadow: 0 0 0 20px rgba(34, 197, 94, 0);
-        transform: scale(1.02);
+        opacity: 0.7;
     }
 }
 
-/* ===== CLASSES UTILITAIRES ===== */
-
-.animate-fade-in {
-    animation: fadeIn 0.3s ease-in-out;
+@keyframes bounce {
+    0%, 20%, 53%, 80%, 100% {
+        animation-timing-function: cubic-bezier(0.215, 0.610, 0.355, 1.000);
+        transform: translate3d(0,0,0);
+    }
+    40%, 43% {
+        animation-timing-function: cubic-bezier(0.755, 0.050, 0.855, 0.060);
+        transform: translate3d(0, -15px, 0);
+    }
+    70% {
+        animation-timing-function: cubic-bezier(0.755, 0.050, 0.855, 0.060);
+        transform: translate3d(0, -7px, 0);
+    }
+    90% {
+        transform: translate3d(0,-2px,0);
+    }
 }
 
-.animate-fade-out {
-    animation: fadeOut 0.3s ease-in-out forwards;
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+    20%, 40%, 60%, 80% { transform: translateX(3px); }
+}
+
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+    }
+}
+
+/* Classes d'animation optimisées */
+.animate-fade-in {
+    animation: fadeIn 0.2s ease-in-out;
 }
 
 .animate-slide-in {
-    animation: slideInFromTopBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: slideInFromTop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .animate-slide-out {
-    animation: slideOutToTop 0.3s ease-in-out forwards;
+    animation: slideOut 0.25s ease-in-out forwards;
 }
 
-/* ✅ Classes spéciales pour le bouton de démarrage */
-.animate-start-button-in {
-    animation: slideInFromTopBounce 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+.animate-pulse-slow {
+    animation: pulse 2s ease-in-out infinite;
 }
 
-.animate-start-button-out {
-    animation: slideOutToTopFade 0.4s ease-in-out forwards;
+.animate-bounce-slow {
+    animation: bounce 1.5s infinite;
 }
 
-.animate-start-button-pulse {
-    animation: startButtonPulse 2s infinite;
+.animate-shake {
+    animation: shake 0.5s ease-in-out;
 }
 
-/* ===== STYLES POUR LES COMPOSANTS DE JEU ===== */
+.animate-glow {
+    animation: glow 2s ease-in-out infinite;
+}
 
+/* Styles pour les composants de jeu */
 .game-board-position {
-    transition: all 0.2s ease-in-out;
+    transition: all 0.15s ease-in-out;
 }
 
 .game-board-position:hover {
     transform: scale(1.05);
 }
 
+.game-board-position:active {
+    transform: scale(0.98);
+}
+
 .color-picker-button {
-    transition: all 0.2s ease-in-out;
+    transition: all 0.15s ease-in-out;
 }
 
 .color-picker-button:hover {
-    transform: scale(1.1);
+    transform: scale(1.08);
 }
 
-/* ===== STYLES POUR LES TOASTS ===== */
+.color-picker-button:active {
+    transform: scale(0.95);
+}
 
-/* Container des toasts */
+/* Styles pour les notifications toast optimisées */
 .toast-container {
+    z-index: 9999;
     position: fixed;
     top: 1rem;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 9999;
-    max-width: 28rem;
+    max-width: 400px;
     width: 100%;
     padding: 0 1rem;
-    pointer-events: none;
 }
 
-/* Styles individuels pour les toasts */
-.toast {
-    pointer-events: auto;
-    margin-bottom: 0.75rem;
-    width: 100%;
+.toast-notification {
+    margin-bottom: 0.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    max-width: 100%;
+    word-wrap: break-word;
 }
 
-/* Animation spéciale pour les toasts empilés */
-.toast:nth-child(1) { transform: translateY(0px) scale(1); z-index: 10; }
-.toast:nth-child(2) { transform: translateY(4px) scale(0.98); z-index: 9; }
-.toast:nth-child(3) { transform: translateY(8px) scale(0.96); z-index: 8; }
-.toast:nth-child(4) { transform: translateY(12px) scale(0.94); z-index: 7; }
-.toast:nth-child(n+5) { transform: translateY(16px) scale(0.92); z-index: 6; opacity: 0.8; }
-
-/* ===== STYLES POUR LE BOUTON DE DÉMARRAGE ===== */
-
-.start-game-button {
-    position: fixed;
-    top: 5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 40;
-    animation: slideInFromTopBounce 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+.toast-notification:last-child {
+    margin-bottom: 0;
 }
 
-.start-game-button:hover {
-    transform: translateX(-50%) scale(1.02);
+/* Styles pour les boutons avec effets visuels */
+.btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
 }
 
-.start-game-button .pulse-ring {
-    animation: startButtonPulse 2s infinite;
+.btn-secondary {
+    @apply bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
 }
 
-/* ===== RESPONSIVE DESIGN ===== */
+.btn-danger {
+    @apply bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+}
 
+.btn-success {
+    @apply bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+}
+
+.btn-warning {
+    @apply bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+}
+
+/* Styles pour les états disabled */
+.btn-disabled {
+    @apply opacity-50 cursor-not-allowed transform-none;
+}
+
+.btn-disabled:hover {
+    transform: none !important;
+}
+
+/* Styles pour les modals */
+.modal-overlay {
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+    animation: slideInFromTop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Styles pour les loading spinners */
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Styles pour les cartes de jeu */
+.game-card {
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+}
+
+.game-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.game-card:active {
+    transform: translateY(0);
+}
+
+/* Styles pour les barres de progression */
+.progress-bar {
+    transition: width 0.3s ease-in-out;
+}
+
+/* Styles pour les alertes rapides */
+.alert {
+    animation: slideInFromTop 0.3s ease-out;
+}
+
+.alert-dismissing {
+    animation: slideOut 0.25s ease-in forwards;
+}
+
+/* Styles pour les badges de statut */
+.status-badge {
+    transition: all 0.2s ease-in-out;
+}
+
+.status-active {
+    @apply bg-green-100 text-green-800 border border-green-200;
+}
+
+.status-waiting {
+    @apply bg-yellow-100 text-yellow-800 border border-yellow-200;
+}
+
+.status-finished {
+    @apply bg-gray-100 text-gray-800 border border-gray-200;
+}
+
+.status-error {
+    @apply bg-red-100 text-red-800 border border-red-200;
+}
+
+/* Responsive design amélioré */
 @media (max-width: 768px) {
     .container {
         padding-left: 1rem;
@@ -244,132 +295,75 @@ code {
         padding: 0 1rem;
     }
 
-    /* ✅ Responsive pour le bouton de démarrage */
-    .start-game-button {
-        top: 4rem;
-        max-width: calc(100vw - 2rem);
+    .modal-content {
+        margin: 1rem;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
     }
 }
 
-/* ===== LOADING SPINNER AMÉLIORÉ ===== */
+@media (max-width: 480px) {
+    .game-board-position {
+        width: 3rem;
+        height: 3rem;
+    }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
+    .color-picker-button {
+        width: 2.5rem;
+        height: 2.5rem;
     }
 }
 
-.spinner {
-    animation: spin 1s linear infinite;
-}
-
-/* ===== BOUTONS AVEC ANIMATIONS ===== */
-
-.btn-hover-scale {
-    transition: transform 0.2s ease-in-out;
-}
-
-.btn-hover-scale:hover {
-    transform: scale(1.05);
-}
-
-.btn-hover-scale:active {
-    transform: scale(0.95);
-}
-
-/* ===== FOCUS RINGS PERSONNALISÉS ===== */
-
-.focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
-}
-
-/* ===== SCROLLBAR PERSONNALISÉE ===== */
-
-.custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
-    border-radius: 3px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(156, 163, 175, 0.7);
-}
-
-/* ===== ANIMATIONS D'ÉTAT ===== */
-
-/* Success state */
-@keyframes successPulse {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
-    }
-    50% {
-        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+/* Styles pour l'accessibilité */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
 }
 
-.success-pulse {
-    animation: successPulse 1.5s ease-in-out;
+/* Amélioration du focus pour l'accessibilité */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
 }
 
-/* Error state */
-@keyframes errorShake {
-    0%, 100% { transform: translateX(0); }
-    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-    20%, 40%, 60%, 80% { transform: translateX(5px); }
+/* Styles pour les états de chargement */
+.loading-shimmer {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
 }
 
-.error-shake {
-    animation: errorShake 0.6s ease-in-out;
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
 }
 
-/* ===== ÉTATS DE JEU ===== */
-
-/* Styles pour la partie en attente */
-.game-waiting {
-    opacity: 0.7;
-    pointer-events: none;
+/* Styles pour les tooltips */
+.tooltip {
+    position: relative;
 }
 
-.game-waiting .game-board,
-.game-waiting .color-picker {
-    filter: grayscale(50%);
-}
-
-/* Styles pour la partie active */
-.game-active .game-board,
-.game-active .color-picker {
-    filter: none;
-    opacity: 1;
-}
-
-/* ===== UTILITAIRES DE DEBUG ===== */
-
-.debug-border {
-    border: 2px solid red !important;
-}
-
-.debug-bg {
-    background-color: rgba(255, 0, 0, 0.1) !important;
-}
-
-/* Styles pour les éléments en développement uniquement */
-.dev-only {
-    display: none;
-}
-
-/* En développement, afficher les éléments dev-only */
-body[data-env="development"] .dev-only {
-    display: block;
+.tooltip:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
 }

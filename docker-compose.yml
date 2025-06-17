@@ -20,4 +20,4 @@ services:
 
 networks:
   quantum-network:
-    external: true
+    driver: bridge
