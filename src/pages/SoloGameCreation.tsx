@@ -189,24 +189,6 @@ export const SoloGameCreation: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Options quantiques */}
-                        {formData.game_type === GameType.QUANTUM && (
-                            <div>
-                                <label className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.quantum_enabled}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, quantum_enabled: e.target.checked }))}
-                                        disabled={loading}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
-                                    />
-                                    <span className="ml-2 text-sm text-gray-700">
-                                        Activer les fonctionnalités quantiques avancées
-                                    </span>
-                                </label>
-                            </div>
-                        )}
-
                         {/* Résumé de la configuration */}
                         <div className="bg-gray-50 p-4 rounded-lg">
                             <h3 className="font-medium mb-2">Configuration de la partie :</h3>

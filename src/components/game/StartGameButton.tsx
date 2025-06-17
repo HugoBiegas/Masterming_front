@@ -26,7 +26,7 @@ export const StartGameButton: React.FC<StartGameButtonProps> = ({
     };
 
     return (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-40 animate-slide-in">
+        <div className="fixed top-5 left-1/2 transform -translate-x-1/2 z-40 animate-slide-in">
             <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-8 py-4 rounded-full shadow-2xl border-2 border-green-400">
                 <div className="flex items-center space-x-4">
                     <div className="text-3xl animate-pulse">🚀</div>
