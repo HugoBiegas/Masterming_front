@@ -92,9 +92,9 @@ export const COLOR_PALETTE = [
     '#000000'  // Noir
 ];
 
-// Constantes pour les notifications
-export const NOTIFICATION_DURATION = 2000; // 2 secondes
-export const MAX_NOTIFICATIONS = 5;
+// Constantes pour les notifications - OPTIMISÉES
+export const NOTIFICATION_DURATION = 1500; // RÉDUIT à 1.5 secondes
+export const MAX_NOTIFICATIONS = 3; // RÉDUIT à 3 max
 
 // Constantes pour les timeouts
 export const API_TIMEOUT = 10000; // 10 secondes
@@ -142,12 +142,12 @@ export const SUCCESS_MESSAGES = {
     LOGOUT_SUCCESS: 'Déconnexion réussie.'
 };
 
-// Configuration des animations
+// Configuration des animations - OPTIMISÉES
 export const ANIMATION_DURATION = {
-    FAST: 200,
-    MEDIUM: 300,
-    SLOW: 500,
-    TOAST: 2000
+    FAST: 150, // RÉDUIT
+    MEDIUM: 200, // RÉDUIT
+    SLOW: 300, // RÉDUIT
+    TOAST: 1500 // RÉDUIT
 };
 
 // Configuration responsive

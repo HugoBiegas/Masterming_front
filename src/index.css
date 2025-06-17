@@ -21,7 +21,7 @@ code {
     monospace;
 }
 
-/* Animations personnalisées optimisées */
+/* Animations personnalisées OPTIMISÉES - Durées réduites */
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -29,9 +29,9 @@ code {
 
 @keyframes slideIn {
     from {
-        transform: translateY(-20px);
+        transform: translateY(-15px);
         opacity: 0;
-        scale: 0.95;
+        scale: 0.98;
     }
     to {
         transform: translateY(0);
@@ -46,14 +46,14 @@ code {
         opacity: 1;
     }
     to {
-        transform: translateY(-15px) scale(0.9);
+        transform: translateY(-10px) scale(0.96);
         opacity: 0;
     }
 }
 
 @keyframes slideInFromTop {
     from {
-        transform: translateY(-50px) scale(0.95);
+        transform: translateY(-30px) scale(0.98);
         opacity: 0;
     }
     to {
@@ -67,7 +67,7 @@ code {
         opacity: 1;
     }
     50% {
-        opacity: 0.7;
+        opacity: 0.8;
     }
 }
 
@@ -78,11 +78,11 @@ code {
     }
     40%, 43% {
         animation-timing-function: cubic-bezier(0.755, 0.050, 0.855, 0.060);
-        transform: translate3d(0, -15px, 0);
+        transform: translate3d(0, -12px, 0);
     }
     70% {
         animation-timing-function: cubic-bezier(0.755, 0.050, 0.855, 0.060);
-        transform: translate3d(0, -7px, 0);
+        transform: translate3d(0, -6px, 0);
     }
     90% {
         transform: translate3d(0,-2px,0);
@@ -91,8 +91,8 @@ code {
 
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
-    10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
-    20%, 40%, 60%, 80% { transform: translateX(3px); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+    20%, 40%, 60%, 80% { transform: translateX(2px); }
 }
 
 @keyframes glow {
@@ -100,42 +100,42 @@ code {
         box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
     }
     50% {
-        box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.8);
     }
 }
 
-/* Classes d'animation optimisées */
+/* Classes d'animation OPTIMISÉES - Durées réduites */
 .animate-fade-in {
-    animation: fadeIn 0.2s ease-in-out;
+    animation: fadeIn 0.15s ease-in-out;
 }
 
 .animate-slide-in {
-    animation: slideInFromTop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: slideInFromTop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .animate-slide-out {
-    animation: slideOut 0.25s ease-in-out forwards;
+    animation: slideOut 0.2s ease-in-out forwards;
 }
 
 .animate-pulse-slow {
-    animation: pulse 2s ease-in-out infinite;
+    animation: pulse 1.5s ease-in-out infinite;
 }
 
 .animate-bounce-slow {
-    animation: bounce 1.5s infinite;
+    animation: bounce 1.2s infinite;
 }
 
 .animate-shake {
-    animation: shake 0.5s ease-in-out;
+    animation: shake 0.4s ease-in-out;
 }
 
 .animate-glow {
-    animation: glow 2s ease-in-out infinite;
+    animation: glow 1.5s ease-in-out infinite;
 }
 
 /* Styles pour les composants de jeu */
 .game-board-position {
-    transition: all 0.15s ease-in-out;
+    transition: all 0.12s ease-in-out;
 }
 
 .game-board-position:hover {
@@ -147,18 +147,18 @@ code {
 }
 
 .color-picker-button {
-    transition: all 0.15s ease-in-out;
+    transition: all 0.12s ease-in-out;
 }
 
 .color-picker-button:hover {
-    transform: scale(1.08);
+    transform: scale(1.06);
 }
 
 .color-picker-button:active {
-    transform: scale(0.95);
+    transform: scale(0.96);
 }
 
-/* Styles pour les notifications toast optimisées */
+/* Styles pour les notifications toast OPTIMISÉES */
 .toast-container {
     z-index: 9999;
     position: fixed;
@@ -171,10 +171,10 @@ code {
 }
 
 .toast-notification {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem; /* RÉDUIT */
     border-radius: 0.5rem;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); /* RÉDUIT */
+    backdrop-filter: blur(6px);
     max-width: 100%;
     word-wrap: break-word;
 }
@@ -183,25 +183,25 @@ code {
     margin-bottom: 0;
 }
 
-/* Styles pour les boutons avec effets visuels */
+/* Styles pour les boutons avec effets visuels OPTIMISÉS */
 .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 transform hover:scale-105 active:scale-95;
 }
 
 .btn-secondary {
-    @apply bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+    @apply bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 transform hover:scale-105 active:scale-95;
 }
 
 .btn-danger {
-    @apply bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+    @apply bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 transform hover:scale-105 active:scale-95;
 }
 
 .btn-success {
-    @apply bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+    @apply bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 transform hover:scale-105 active:scale-95;
 }
 
 .btn-warning {
-    @apply bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95;
+    @apply bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 transform hover:scale-105 active:scale-95;
 }
 
 /* Styles pour les états disabled */
@@ -213,14 +213,14 @@ code {
     transform: none !important;
 }
 
-/* Styles pour les modals */
+/* Styles pour les modals OPTIMISÉS */
 .modal-overlay {
-    backdrop-filter: blur(4px);
-    animation: fadeIn 0.2s ease-out;
+    backdrop-filter: blur(3px);
+    animation: fadeIn 0.15s ease-out;
 }
 
 .modal-content {
-    animation: slideInFromTop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: slideInFromTop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Styles pour les loading spinners */
@@ -233,15 +233,15 @@ code {
     to { transform: rotate(360deg); }
 }
 
-/* Styles pour les cartes de jeu */
+/* Styles pour les cartes de jeu OPTIMISÉS */
 .game-card {
-    transition: all 0.2s ease-in-out;
+    transition: all 0.15s ease-in-out;
     cursor: pointer;
 }
 
 .game-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 
 .game-card:active {
@@ -250,21 +250,21 @@ code {
 
 /* Styles pour les barres de progression */
 .progress-bar {
-    transition: width 0.3s ease-in-out;
+    transition: width 0.25s ease-in-out;
 }
 
-/* Styles pour les alertes rapides */
+/* Styles pour les alertes rapides OPTIMISÉS */
 .alert {
-    animation: slideInFromTop 0.3s ease-out;
+    animation: slideInFromTop 0.2s ease-out;
 }
 
 .alert-dismissing {
-    animation: slideOut 0.25s ease-in forwards;
+    animation: slideOut 0.2s ease-in forwards;
 }
 
 /* Styles pour les badges de statut */
 .status-badge {
-    transition: all 0.2s ease-in-out;
+    transition: all 0.15s ease-in-out;
 }
 
 .status-active {
@@ -304,13 +304,13 @@ code {
 
 @media (max-width: 480px) {
     .game-board-position {
-        width: 3rem;
-        height: 3rem;
+        width: 2.8rem;
+        height: 2.8rem;
     }
 
     .color-picker-button {
-        width: 2.5rem;
-        height: 2.5rem;
+        width: 2.4rem;
+        height: 2.4rem;
     }
 }
 
@@ -331,11 +331,11 @@ select:focus-visible {
     outline-offset: 2px;
 }
 
-/* Styles pour les états de chargement */
+/* Styles pour les états de chargement OPTIMISÉS */
 .loading-shimmer {
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
+    animation: shimmer 1.2s infinite;
 }
 
 @keyframes shimmer {
@@ -347,7 +347,7 @@ select:focus-visible {
     }
 }
 
-/* Styles pour les tooltips */
+/* Styles pour les tooltips OPTIMISÉS */
 .tooltip {
     position: relative;
 }
@@ -358,12 +358,76 @@ select:focus-visible {
     bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
-    padding: 0.5rem;
+    padding: 0.4rem;
     background-color: rgba(0, 0, 0, 0.8);
     color: white;
     border-radius: 0.25rem;
     font-size: 0.75rem;
     white-space: nowrap;
     z-index: 1000;
-    animation: fadeIn 0.2s ease-out;
+    animation: fadeIn 0.15s ease-out;
+}
+
+/* NOUVEAU : Styles spécifiques pour les toasts de jeu optimisés */
+.game-toast-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-left: 4px solid #047857;
+}
+
+.game-toast-error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border-left: 4px solid #b91c1c;
+}
+
+.game-toast-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    border-left: 4px solid #b45309;
+}
+
+.game-toast-info {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-left: 4px solid #1d4ed8;
+}
+
+/* NOUVEAU : Animation pour les éléments de score */
+@keyframes scoreIncrease {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); color: #10b981; }
+    100% { transform: scale(1); }
+}
+
+.score-animation {
+    animation: scoreIncrease 0.3s ease-in-out;
+}
+
+/* NOUVEAU : Styles pour le bouton de validation conditionnel */
+.validate-button-appear {
+    animation: slideInFromTop 0.25s ease-out;
+}
+
+.validate-button-disappear {
+    animation: slideOut 0.2s ease-in forwards;
+}
+
+/* NOUVEAU : Amélioration des indicateurs de progression */
+.progress-indicator {
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.progress-complete {
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+/* NOUVEAU : Styles pour les interactions tactiles améliorées */
+@media (hover: none) and (pointer: coarse) {
+    .game-board-position:active {
+        transform: scale(0.95);
+        transition: transform 0.1s;
+    }
+
+    .color-picker-button:active {
+        transform: scale(0.92);
+        transition: transform 0.1s;
+    }
 }

@@ -7,7 +7,10 @@ interface AttemptHistoryProps {
     maxAttempts?: number;
 }
 
-export const AttemptHistory: React.FC<AttemptHistoryProps> = ({ attempts, maxAttempts }) => {
+export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
+                                                                  attempts,
+                                                                  maxAttempts
+                                                              }) => {
     return (
         <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-6 rounded-xl shadow-lg border-2 border-amber-200">
             <div className="bg-white rounded-lg p-4 shadow-inner">

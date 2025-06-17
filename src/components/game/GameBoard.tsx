@@ -4,15 +4,21 @@ import { COLOR_PALETTE } from '@/utils/constants';
 interface GameBoardProps {
     combination: number[];
     onPositionClick: (position: number) => void;
+    onRemoveColor: (position: number) => void;
+    onSubmitAttempt: () => void; // NOUVELLE PROP pour valider
     selectedColor: number | null;
     isActive?: boolean;
+    canSubmit?: boolean; // NOUVELLE PROP pour activer le bouton
 }
 
 export const GameBoard: React.FC<GameBoardProps> = ({
                                                         combination,
                                                         onPositionClick,
+                                                        onRemoveColor,
+                                                        onSubmitAttempt,
                                                         selectedColor,
-                                                        isActive = true
+                                                        isActive = true,
+                                                        canSubmit = false
                                                     }) => {
     return (
         <div className="bg-gradient-to-br from-amber-100 to-amber-200 p-6 rounded-xl shadow-lg border-2 border-amber-300">
@@ -62,15 +68,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                                 )}
                             </button>
 
-                            {/* Clear button for placed pegs */}
+                            {/* Clear button for placed pegs - CORRIGÉ */}
                             {color && isActive && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onPositionClick(index); // This should clear the position
+                                        onRemoveColor(index); // UTILISE LA NOUVELLE FONCTION
                                     }}
-                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors shadow-lg"
-                                    title="Supprimer"
+                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors shadow-lg flex items-center justify-center"
+                                    title="Supprimer cette couleur"
                                 >
                                     ✕
                                 </button>
@@ -79,18 +85,43 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     ))}
                 </div>
 
-                {/* Instructions */}
+                {/* Instructions OU Bouton Valider */}
                 <div className="mt-4 text-center">
-                    {selectedColor ? (
-                        <p className="text-sm text-gray-600">
-                            <span className="inline-block w-4 h-4 rounded-full mr-2 border border-gray-400"
-                                  style={{ backgroundColor: COLOR_PALETTE[selectedColor - 1] }}></span>
-                            Cliquez sur une position pour placer cette couleur
-                        </p>
+                    {combination.every(c => c > 0) && canSubmit ? (
+                        // Bouton Valider quand toutes les positions sont remplies
+                        <button
+                            onClick={onSubmitAttempt}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-all transform hover:scale-105 shadow-lg validate-button-appear"
+                        >
+                            ✓ Valider la tentative
+                        </button>
                     ) : (
-                        <p className="text-sm text-gray-500">
-                            Sélectionnez une couleur puis cliquez sur une position
-                        </p>
+                        <>
+                            {selectedColor ? (
+                                <p className="text-sm text-gray-600">
+                                    <span className="inline-block w-4 h-4 rounded-full mr-2 border border-gray-400"
+                                          style={{ backgroundColor: COLOR_PALETTE[selectedColor - 1] }}></span>
+                                    Cliquez sur une position pour placer cette couleur
+                                </p>
+                            ) : (
+                                <p className="text-sm text-gray-500">
+                                    Sélectionnez une couleur puis cliquez sur une position
+                                </p>
+                            )}
+
+                            {/* Indicateur de progression */}
+                            <div className="mt-3">
+                                <div className="text-xs text-gray-500">
+                                    Positions remplies : {combination.filter(c => c > 0).length} / {combination.length}
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                                    <div
+                                        className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                                        style={{ width: `${(combination.filter(c => c > 0).length / combination.length) * 100}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
             </div>
