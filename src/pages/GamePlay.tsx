@@ -518,6 +518,7 @@ export const GamePlay: React.FC = () => {
                             <AttemptHistory
                                 attempts={game.attempts}
                                 maxAttempts={maxAttempts}
+                                combinationLength={game.combination_length}
                             />
                         </div>
                     </div>
@@ -529,6 +530,7 @@ export const GamePlay: React.FC = () => {
                         <AttemptHistory
                             attempts={game.attempts}
                             maxAttempts={maxAttempts}
+                            combinationLength={game.combination_length}
                         />
                     </div>
                 )}
