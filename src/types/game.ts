@@ -37,7 +37,7 @@ export interface DifficultyConfig {
     description: string;
 }
 
-// NOUVELLES INTERFACES QUANTIQUES
+// INTERFACES QUANTIQUES - Correspondance exacte avec le backend
 export interface QuantumPositionProbability {
     position: number;
     exact_match_probability: number;
@@ -73,7 +73,6 @@ export interface GameCreateRequest {
     auto_leave?: boolean;
 }
 
-// Interface pour la réponse de création de partie
 export interface GameCreateResponse {
     id: string;
     room_code: string;
@@ -127,27 +126,32 @@ export interface Participant {
     attempts_count: number;
 }
 
-// INTERFACE ATTEMPT ÉTENDUE avec support quantique
+// INTERFACE ATTEMPT - Correspondance exacte avec le backend
 export interface Attempt {
     id: string;
     attempt_number: number;
     user_id: string;
     combination: number[];
-    correct_positions: number;
-    correct_colors: number;
+
+    // NOMS BACKEND CORRECTS (pas correct_positions/correct_colors)
+    exact_matches: number;
+    position_matches: number;
     is_correct: boolean;
+
     attempt_score: number;
     time_taken?: number;
     created_at: string;
 
-    // PROPRIÉTÉS QUANTIQUES ÉTENDUES
-    exact_matches?: number;
-    position_matches?: number;
+    // PROPRIÉTÉS QUANTIQUES DU BACKEND
     quantum_calculated?: boolean;
     quantum_probabilities?: QuantumProbabilities;
     quantum_hint_used?: boolean;
     remaining_attempts?: number;
     game_finished?: boolean;
+
+    // PROPRIÉTÉS LEGACY pour rétrocompatibilité
+    correct_positions?: number;
+    correct_colors?: number;
 }
 
 export interface AttemptRequest {
@@ -156,27 +160,33 @@ export interface AttemptRequest {
     hint_type?: string;
 }
 
-// INTERFACE ATTEMPTRESULT ÉTENDUE avec support quantique
+// INTERFACE ATTEMPTRESULT - Correspondance exacte avec le backend
 export interface AttemptResult {
     id: string;
     attempt_number: number;
     combination: number[];
-    correct_positions: number;
-    correct_colors: number;
+
+    // NOMS BACKEND CORRECTS
+    exact_matches: number;
+    position_matches: number;
     is_winning: boolean;
     score: number;
+
     time_taken?: number;
     game_finished?: boolean;
     game_status?: GameStatus;
     solution?: number[];
     remaining_attempts?: number;
 
-    // PROPRIÉTÉS QUANTIQUES ÉTENDUES
-    exact_matches?: number;
-    position_matches?: number;
+    // PROPRIÉTÉS QUANTIQUES DU BACKEND
     quantum_calculated?: boolean;
     quantum_probabilities?: QuantumProbabilities;
     quantum_hint_used?: boolean;
+
+    // PROPRIÉTÉS LEGACY pour rétrocompatibilité
+    correct_positions?: number;
+    correct_colors?: number;
+    is_correct?: boolean;
 }
 
 // Interface pour les réponses API génériques

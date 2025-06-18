@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo } from 'react';
+import React from 'react';
 import { Attempt } from '@/types/game';
 import { COLOR_PALETTE } from '@/utils/constants';
 import { QuantumIndicators } from './QuantumIndicators';
-import { QuantumSimulator } from '@/utils/quantumSimulator';
 
 interface AttemptHistoryProps {
     attempts: Attempt[];
@@ -10,8 +9,6 @@ interface AttemptHistoryProps {
     combinationLength?: number;
     isQuantumMode?: boolean;
     gameType?: string;
-    enableSimulation?: boolean;
-    targetSolution?: number[];
 }
 
 export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
@@ -19,73 +16,17 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                                                   maxAttempts,
                                                                   combinationLength = 4,
                                                                   isQuantumMode = false,
-                                                                  gameType,
-                                                                  enableSimulation = true,
-                                                                  targetSolution
+                                                                  gameType
                                                               }) => {
 
-    // 🔮 Enrichir automatiquement les tentatives pour les jeux quantiques
-    const enrichedAttempts = useMemo(() => {
-        if (!isQuantumMode) {
-            return attempts;
-        }
+    // 🔍 DÉTECTION SIMPLE des données quantiques réelles
+    const hasQuantumData = (attempt: Attempt): boolean => {
+        return attempt.quantum_calculated === true &&
+            !!attempt.quantum_probabilities?.position_probabilities &&
+            attempt.quantum_probabilities.position_probabilities.length > 0;
+    };
 
-        // Vérifier si des données quantiques réelles existent déjà
-        const hasRealQuantumData = attempts.some(attempt =>
-            attempt.quantum_calculated === true &&
-            attempt.quantum_probabilities?.position_probabilities &&
-            Array.isArray(attempt.quantum_probabilities.position_probabilities) &&
-            attempt.quantum_probabilities.position_probabilities.length > 0
-        );
-
-        if (hasRealQuantumData) {
-            console.log('✅ Real quantum data detected, using original attempts');
-            return attempts;
-        }
-
-        if (!enableSimulation) {
-            console.log('⚠️ No quantum data and simulation disabled');
-            return attempts;
-        }
-
-        // Utiliser la simulation quantique
-        console.log('🔮 No real quantum data found, enriching with simulation...');
-        const simulated = QuantumSimulator.enrichGameWithQuantumData(
-            attempts,
-            combinationLength,
-            targetSolution
-        );
-
-        console.log('✅ Quantum simulation complete for', simulated.length, 'attempts');
-        return simulated;
-    }, [attempts, isQuantumMode, enableSimulation, combinationLength, targetSolution]);
-
-    // 🔍 Debug logging
-    useEffect(() => {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('🔮 AttemptHistory Debug:', {
-                gameType,
-                isQuantumMode,
-                enableSimulation,
-                attemptsCount: attempts.length,
-                enrichedAttemptsCount: enrichedAttempts.length,
-                hasRealQuantumData: attempts.some(a => a.quantum_calculated === true),
-                hasSimulatedQuantumData: enrichedAttempts.some(a => a.quantum_calculated === true),
-                firstAttemptComparison: attempts.length > 0 ? {
-                    original: {
-                        quantum_calculated: attempts[0].quantum_calculated,
-                        hasQuantumProbabilities: !!attempts[0].quantum_probabilities
-                    },
-                    enriched: {
-                        quantum_calculated: enrichedAttempts[0].quantum_calculated,
-                        hasQuantumProbabilities: !!enrichedAttempts[0].quantum_probabilities
-                    }
-                } : null
-            });
-        }
-    }, [attempts, enrichedAttempts, isQuantumMode, gameType, enableSimulation]);
-
-    // Fonction pour générer les indicateurs classiques en grille
+    // Fonction pour générer les indicateurs classiques
     const generateClassicIndicatorGrid = (count: number, color: string, title: string) => {
         if (count === 0) {
             return (
@@ -112,17 +53,6 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                 );
             }
 
-            if (row === totalRows - 1 && endIndex < count) {
-                const remaining = maxPerRow - (endIndex - startIndex);
-                for (let i = 0; i < remaining; i++) {
-                    indicatorsInThisRow.push(
-                        <span key={`empty-${row}-${i}`} className="text-gray-300 font-bold text-lg" title="Vide">
-                            ○
-                        </span>
-                    );
-                }
-            }
-
             indicators.push(
                 <div key={`row-${row}`} className="flex justify-center space-x-1">
                     {indicatorsInThisRow}
@@ -133,24 +63,13 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
         return indicators;
     };
 
-    // Déterminer si une tentative a des données quantiques valides
-    const hasQuantumData = (attempt: Attempt) => {
-        return attempt.quantum_calculated === true &&
-            attempt.quantum_probabilities?.position_probabilities &&
-            Array.isArray(attempt.quantum_probabilities.position_probabilities) &&
-            attempt.quantum_probabilities.position_probabilities.length > 0;
-    };
-
-    // Détecter si on utilise des données simulées
-    const usingSimulation = isQuantumMode &&
-        enableSimulation &&
-        !attempts.some(a => hasQuantumData(a)) &&
-        enrichedAttempts.some(a => hasQuantumData(a));
+    // Compter les tentatives avec données quantiques
+    const quantumAttemptsCount = attempts.filter(hasQuantumData).length;
 
     return (
         <div className="w-full h-full bg-gradient-to-br from-amber-50 to-amber-100 border-l-4 border-amber-300 shadow-lg">
             <div className="h-full flex flex-col bg-white rounded-l-lg shadow-inner">
-                {/* Header avec informations */}
+                {/* Header */}
                 <div className={`text-white p-4 rounded-tl-lg flex-shrink-0 ${
                     isQuantumMode
                         ? 'bg-gradient-to-r from-purple-500 to-purple-600'
@@ -163,27 +82,17 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                         <div className={`text-sm mt-1 ${
                             isQuantumMode ? 'text-purple-100' : 'text-amber-100'
                         }`}>
-                            {enrichedAttempts.length}{maxAttempts ? ` / ${maxAttempts}` : ''} tentatives
-                            {isQuantumMode && (
-                                <span>
-                                    {' • Mode Quantique '}
-                                    {usingSimulation ? '(Simulé)' : '(Réel)'}
-                                </span>
+                            {attempts.length}{maxAttempts ? ` / ${maxAttempts}` : ''} tentatives
+                            {isQuantumMode && quantumAttemptsCount > 0 && (
+                                <span className="ml-2">• {quantumAttemptsCount} avec données quantiques</span>
                             )}
                         </div>
-
-                        {/* Notification de simulation */}
-                        {usingSimulation && (
-                            <div className="text-xs mt-1 text-purple-200 bg-purple-700 bg-opacity-30 rounded px-2 py-1">
-                                💡 Interface de démonstration - Données simulées
-                            </div>
-                        )}
                     </div>
                 </div>
 
                 {/* Contenu scrollable */}
                 <div className="flex-1 overflow-y-auto p-4 history-scroll-container">
-                    {enrichedAttempts.length === 0 ? (
+                    {attempts.length === 0 ? (
                         <div className="text-center py-8">
                             <div className="text-gray-400 text-4xl mb-2">
                                 {isQuantumMode ? '🔮' : '🎯'}
@@ -198,7 +107,7 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {enrichedAttempts.map((attempt, index) => {
+                            {attempts.map((attempt, index) => {
                                 const hasQuantum = hasQuantumData(attempt);
                                 const shouldShowQuantum = isQuantumMode && hasQuantum;
 
@@ -215,18 +124,10 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                         }
                                         `}
                                     >
-                                        {/* Badge de type de données */}
+                                        {/* Badge données quantiques */}
                                         {shouldShowQuantum && (
-                                            <div className="absolute top-2 right-2 text-xs px-2 py-1 rounded-full font-medium">
-                                                {usingSimulation ? (
-                                                    <span className="bg-orange-500 text-white" title="Données simulées">
-                                                        SIM
-                                                    </span>
-                                                ) : (
-                                                    <span className="bg-purple-500 text-white" title="Données réelles du backend">
-                                                        REAL
-                                                    </span>
-                                                )}
+                                            <div className="absolute top-2 right-2 text-xs px-2 py-1 rounded-full font-medium bg-green-500 text-white">
+                                                QUANTUM
                                             </div>
                                         )}
 
@@ -276,9 +177,9 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Section des indicateurs - Conditionnel selon le mode */}
+                                        {/* Section des indicateurs */}
                                         {shouldShowQuantum ? (
-                                            // Affichage quantique
+                                            // Affichage quantique avec vraies données
                                             <div className="mt-4">
                                                 <QuantumIndicators
                                                     positionProbabilities={attempt.quantum_probabilities!.position_probabilities}
@@ -287,23 +188,35 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                                     compactMode={false}
                                                 />
 
-                                                {/* Informations quantiques supplémentaires */}
+                                                {/* Informations quantiques */}
                                                 <div className="mt-3 bg-purple-100 border border-purple-200 rounded-lg p-2">
                                                     <div className="text-xs text-purple-700 space-y-1">
                                                         <div className="flex justify-between">
                                                             <span>Mesures quantiques totales:</span>
-                                                            <span className="font-semibold">{attempt.quantum_probabilities!.shots_used}</span>
+                                                            <span className="font-semibold">
+                                                                {attempt.quantum_probabilities!.shots_used}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span>Positions exactes:</span>
+                                                            <span className="font-semibold text-green-600">
+                                                                {attempt.quantum_probabilities!.exact_matches}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span>Couleurs mal placées:</span>
+                                                            <span className="font-semibold text-orange-600">
+                                                                {attempt.quantum_probabilities!.wrong_position}
+                                                            </span>
                                                         </div>
                                                         {attempt.quantum_hint_used && (
                                                             <div className="text-purple-600 font-medium">
                                                                 💡 Indice quantique utilisé
                                                             </div>
                                                         )}
-                                                        {usingSimulation && (
-                                                            <div className="text-orange-600 font-medium text-xs italic">
-                                                                ⚠️ Données simulées - Interface de démonstration
-                                                            </div>
-                                                        )}
+                                                        <div className="text-green-600 font-medium text-xs">
+                                                            ✅ Données quantiques du backend
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -313,11 +226,11 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                                 {/* Bien placées */}
                                                 <div className="text-center">
                                                     <div className="font-medium text-green-700 text-xs mb-2">
-                                                        Bien placées ({attempt.correct_positions || attempt.exact_matches || 0})
+                                                        Bien placées ({attempt.exact_matches || 0})
                                                     </div>
                                                     <div className="space-y-1">
                                                         {generateClassicIndicatorGrid(
-                                                            attempt.correct_positions || attempt.exact_matches || 0,
+                                                            attempt.exact_matches || 0,
                                                             "text-green-600",
                                                             "Bonne couleur, bonne position"
                                                         )}
@@ -327,11 +240,11 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                                 {/* Mal placées */}
                                                 <div className="text-center">
                                                     <div className="font-medium text-orange-600 text-xs mb-2">
-                                                        Mal placées ({attempt.correct_colors || attempt.position_matches || 0})
+                                                        Mal placées ({attempt.position_matches || 0})
                                                     </div>
                                                     <div className="space-y-1">
                                                         {generateClassicIndicatorGrid(
-                                                            attempt.correct_colors || attempt.position_matches || 0,
+                                                            attempt.position_matches || 0,
                                                             "text-orange-500",
                                                             "Bonne couleur, mauvaise position"
                                                         )}
@@ -346,7 +259,7 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                     )}
                 </div>
 
-                {/* Footer avec légende - fixe */}
+                {/* Footer avec légende */}
                 <div className="border-t border-gray-200 p-3 bg-gray-50 rounded-bl-lg flex-shrink-0">
                     <div className="text-xs text-gray-600 space-y-1">
                         <div className="font-medium text-gray-700 mb-2">
@@ -357,7 +270,7 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                             <div className="space-y-1">
                                 <div className="flex items-center space-x-2">
                                     <span className="text-purple-600 font-bold">🔮</span>
-                                    <span>Analyse quantique {usingSimulation ? '(simulée)' : 'activée'}</span>
+                                    <span>Analyse quantique (données réelles)</span>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                     <span>🎯</span>
@@ -370,6 +283,9 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                 <div className="flex items-center space-x-2">
                                     <span>❌</span>
                                     <span>Aucune correspondance détectée</span>
+                                </div>
+                                <div className="text-xs text-green-600 mt-2 italic">
+                                    * Données quantiques fournies par le backend
                                 </div>
                             </div>
                         ) : (
@@ -391,17 +307,10 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
 
                         <div className="text-xs text-gray-500 mt-2 italic">
                             {isQuantumMode
-                                ? `* Les vagues circulaires indiquent les probabilités quantiques ${usingSimulation ? '(simulées)' : ''}`
+                                ? '* Les vagues circulaires indiquent les probabilités quantiques'
                                 : '* Affichage en grille, max 4 indicateurs par ligne'
                             }
                         </div>
-
-                        {/* Info simulation */}
-                        {usingSimulation && (
-                            <div className="text-xs text-orange-600 mt-2 border-t pt-2">
-                                💡 Simulation activée pour démonstration d'interface
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
