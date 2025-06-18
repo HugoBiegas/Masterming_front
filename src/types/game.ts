@@ -37,6 +37,25 @@ export interface DifficultyConfig {
     description: string;
 }
 
+// NOUVELLES INTERFACES QUANTIQUES
+export interface QuantumPositionProbability {
+    position: number;
+    exact_match_probability: number;
+    match_type: 'exact_match' | 'color_present' | 'no_match';
+    confidence: 'high' | 'medium' | 'low';
+    attempt_color: number;
+    quantum_measurements: number;
+    total_shots: number;
+}
+
+export interface QuantumProbabilities {
+    exact_matches: number;
+    wrong_position: number;
+    position_probabilities: QuantumPositionProbability[];
+    quantum_calculated: boolean;
+    shots_used: number;
+}
+
 export interface GameCreateRequest {
     game_type: GameType;
     game_mode: GameMode;
@@ -51,7 +70,7 @@ export interface GameCreateRequest {
     enable_chat: boolean;
     quantum_enabled: boolean;
     settings?: Record<string, any>;
-    auto_leave?: boolean; // AJOUTÉ : pour l'auto-leave
+    auto_leave?: boolean;
 }
 
 // Interface pour la réponse de création de partie
@@ -108,6 +127,7 @@ export interface Participant {
     attempts_count: number;
 }
 
+// INTERFACE ATTEMPT ÉTENDUE avec support quantique
 export interface Attempt {
     id: string;
     attempt_number: number;
@@ -119,6 +139,15 @@ export interface Attempt {
     attempt_score: number;
     time_taken?: number;
     created_at: string;
+
+    // PROPRIÉTÉS QUANTIQUES ÉTENDUES
+    exact_matches?: number;
+    position_matches?: number;
+    quantum_calculated?: boolean;
+    quantum_probabilities?: QuantumProbabilities;
+    quantum_hint_used?: boolean;
+    remaining_attempts?: number;
+    game_finished?: boolean;
 }
 
 export interface AttemptRequest {
@@ -127,6 +156,7 @@ export interface AttemptRequest {
     hint_type?: string;
 }
 
+// INTERFACE ATTEMPTRESULT ÉTENDUE avec support quantique
 export interface AttemptResult {
     id: string;
     attempt_number: number;
@@ -139,8 +169,14 @@ export interface AttemptResult {
     game_finished?: boolean;
     game_status?: GameStatus;
     solution?: number[];
-    quantum_hint_used?: boolean;
     remaining_attempts?: number;
+
+    // PROPRIÉTÉS QUANTIQUES ÉTENDUES
+    exact_matches?: number;
+    position_matches?: number;
+    quantum_calculated?: boolean;
+    quantum_probabilities?: QuantumProbabilities;
+    quantum_hint_used?: boolean;
 }
 
 // Interface pour les réponses API génériques

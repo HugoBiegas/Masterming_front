@@ -401,6 +401,10 @@ export const GamePlay: React.FC = () => {
                     attempts={game.attempts}
                     maxAttempts={maxAttempts}
                     combinationLength={game.combination_length}
+                    isQuantumMode={game.game_type === 'quantum'}
+                    gameType={game.game_type}
+                    enableSimulation={true}
+                    targetSolution={game.solution}
                 />
             </div>
 
