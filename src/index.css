@@ -431,3 +431,87 @@ select:focus-visible {
         transition: transform 0.1s;
     }
 }
+
+/* NOUVEAU : Styles pour l'historique fixe sur toute la page */
+.page-with-history {
+    padding-right: 384px; /* Largeur de l'historique sur desktop */
+}
+
+.page-with-history-colorpicker {
+    right: 384px; /* Décalage du ColorPicker pour laisser place à l'historique */
+}
+
+.history-fixed-fullscreen {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 384px;
+    height: 100vh;
+    z-index: 30;
+}
+
+.h-screen-minus-header {
+    height: 100vh;
+}
+
+/* Optimisation pour les écrans plus petits */
+@media (max-width: 1279px) {
+    .page-with-history {
+        padding-right: 0;
+        padding-bottom: 320px; /* Hauteur de l'historique en bas */
+    }
+
+    .page-with-history-colorpicker {
+        right: 0; /* Pas de décalage sur mobile */
+        left: 0;
+    }
+
+    .history-fixed-fullscreen {
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        right: 0;
+        left: 0;
+        width: 100%;
+        height: 320px;
+        z-index: 30;
+    }
+
+    .h-screen-minus-header {
+        height: 320px;
+    }
+}
+
+@media (max-width: 768px) {
+    .history-fixed-sidebar {
+        height: 280px !important;
+    }
+
+    .h-screen-minus-header {
+        height: 280px;
+    }
+}
+
+/* Styles pour améliorer l'historique fixe */
+.history-scroll-container {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db #f9fafb;
+}
+
+.history-scroll-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.history-scroll-container::-webkit-scrollbar-track {
+    background: #f9fafb;
+    border-radius: 3px;
+}
+
+.history-scroll-container::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+
+.history-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}

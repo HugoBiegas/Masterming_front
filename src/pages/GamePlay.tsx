@@ -392,8 +392,17 @@ export const GamePlay: React.FC = () => {
     const remainingAttempts = maxAttempts - game.attempts.length;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 page-with-history">
             <Header />
+
+            {/* Historique fixe sur toute la hauteur à droite */}
+            <div className="history-fixed-fullscreen">
+                <AttemptHistory
+                    attempts={game.attempts}
+                    maxAttempts={maxAttempts}
+                    combinationLength={game.combination_length}
+                />
+            </div>
 
             <div className="container mx-auto py-6 px-4">
                 {/* En-tête avec bouton quitter */}
@@ -489,49 +498,59 @@ export const GamePlay: React.FC = () => {
                     </div>
                 )}
 
-                {/* Zone de jeu principale */}
+                {/* Zone de jeu principale - sans historique dans le layout */}
                 {game.status === GameStatus.ACTIVE && (
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                        {/* Zone de jeu principale */}
-                        <div className="xl:col-span-2 space-y-6">
-                            {/* Plateau de jeu */}
-                            <GameBoard
-                                combination={currentCombination}
-                                onPositionClick={handlePositionClick}
-                                onRemoveColor={handleRemoveColor}
-                                onSubmitAttempt={handleSubmit}
-                                selectedColor={selectedColor}
-                                isActive={isGameActive}
-                                canSubmit={canSubmit}
-                            />
+                    <div className="space-y-6">
+                        {/* Plateau de jeu */}
+                        <GameBoard
+                            combination={currentCombination}
+                            onPositionClick={handlePositionClick}
+                            onRemoveColor={handleRemoveColor}
+                            onSubmitAttempt={handleSubmit}
+                            selectedColor={selectedColor}
+                            isActive={isGameActive}
+                            canSubmit={canSubmit}
+                        />
 
-                            {/* Sélecteur de couleurs */}
-                            <ColorPicker
-                                availableColors={game.available_colors}
-                                selectedColor={selectedColor}
-                                onColorSelect={handleColorSelect}
-                            />
-                        </div>
-
-                        {/* Historique */}
-                        <div className="xl:col-span-1">
-                            <AttemptHistory
-                                attempts={game.attempts}
-                                maxAttempts={maxAttempts}
-                                combinationLength={game.combination_length}
-                            />
-                        </div>
+                        {/* Sélecteur de couleurs */}
+                        <ColorPicker
+                            availableColors={game.available_colors}
+                            selectedColor={selectedColor}
+                            onColorSelect={handleColorSelect}
+                        />
                     </div>
                 )}
 
-                {/* Historique seul pour les parties terminées */}
+                {/* Zone pour les parties terminées */}
                 {game.status === GameStatus.FINISHED && (
-                    <div className="max-w-lg mx-auto">
-                        <AttemptHistory
-                            attempts={game.attempts}
-                            maxAttempts={maxAttempts}
-                            combinationLength={game.combination_length}
-                        />
+                    <div className="flex items-center justify-center min-h-[400px]">
+                        <div className="text-center bg-white rounded-lg shadow-lg p-8 max-w-md">
+                            <div className="text-6xl mb-4">
+                                {isWinner ? '🏆' : '🎯'}
+                            </div>
+                            <h2 className="text-2xl font-bold mb-4">
+                                {isWinner ? 'Partie terminée - Victoire !' : 'Partie terminée'}
+                            </h2>
+                            <p className="text-gray-600 mb-6">
+                                Consultez l'historique de vos tentatives à droite
+                            </p>
+
+                            {/* Boutons d'action pour partie terminée */}
+                            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                                <button
+                                    onClick={handleNewGame}
+                                    className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-medium transform hover:scale-105"
+                                >
+                                    🎮 Nouvelle partie
+                                </button>
+                                <button
+                                    onClick={handleBackToMenu}
+                                    className="flex-1 bg-gray-500 text-white py-3 px-6 rounded-lg hover:bg-gray-600 transition-all font-medium transform hover:scale-105"
+                                >
+                                    🏠 Menu principal
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
