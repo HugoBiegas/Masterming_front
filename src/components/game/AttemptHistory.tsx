@@ -5,64 +5,53 @@ import { COLOR_PALETTE } from '@/utils/constants';
 interface AttemptHistoryProps {
     attempts: Attempt[];
     maxAttempts?: number;
-    combinationLength?: number; // Ajout pour connaître la longueur de la combinaison
+    combinationLength?: number;
 }
 
 export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                                                   attempts,
                                                                   maxAttempts,
-                                                                  combinationLength = 4 // Valeur par défaut
+                                                                  combinationLength = 4
                                                               }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
-    const maxIndicators = Math.min(6, combinationLength); // Maximum 6 indicateurs par ligne
 
-    // Fonction pour générer les indicateurs "O" bien placés (verts) - max 6
-    const generateCorrectPositionIndicators = (correctPositions: number) => {
+    // Fonction pour générer les indicateurs en grille (max 4 par ligne)
+    const generateIndicatorGrid = (count: number, color: string, title: string) => {
         const indicators = [];
-        const displayCount = Math.min(correctPositions, maxIndicators);
+        const maxPerRow = 4;
+        const totalRows = Math.ceil(count / maxPerRow);
 
-        // Ajouter les "●" pour les bonnes positions (en vert)
-        for (let i = 0; i < displayCount; i++) {
+        for (let row = 0; row < totalRows; row++) {
+            const indicatorsInThisRow = [];
+            const startIndex = row * maxPerRow;
+            const endIndex = Math.min(startIndex + maxPerRow, count);
+
+            // Ajouter les indicateurs pleins pour cette ligne
+            for (let i = startIndex; i < endIndex; i++) {
+                indicatorsInThisRow.push(
+                    <span key={`filled-${i}`} className={`${color} font-bold text-lg`} title={title}>
+                        ●
+                    </span>
+                );
+            }
+
+            // Compléter la ligne avec des indicateurs vides si nécessaire (seulement pour la dernière ligne)
+            if (row === totalRows - 1) {
+                const remaining = maxPerRow - (endIndex - startIndex);
+                for (let i = 0; i < remaining; i++) {
+                    indicatorsInThisRow.push(
+                        <span key={`empty-${row}-${i}`} className="text-gray-300 font-bold text-lg" title="Vide">
+                            ○
+                        </span>
+                    );
+                }
+            }
+
             indicators.push(
-                <span key={`pos-${i}`} className="text-green-600 font-bold text-lg" title="Bonne couleur, bonne position">
-                    ●
-                </span>
-            );
-        }
-
-        // Compléter avec des "○" vides (en gris) jusqu'à maxIndicators
-        for (let i = displayCount; i < maxIndicators; i++) {
-            indicators.push(
-                <span key={`pos-empty-${i}`} className="text-gray-300 font-bold text-lg" title="Pas bien placé">
-                    ○
-                </span>
-            );
-        }
-
-        return indicators;
-    };
-
-    // Fonction pour générer les indicateurs "O" mal placés (oranges) - max 6
-    const generateCorrectColorIndicators = (correctColors: number) => {
-        const indicators = [];
-        const displayCount = Math.min(correctColors, maxIndicators);
-
-        // Ajouter les "●" pour les bonnes couleurs mal placées (en orange)
-        for (let i = 0; i < displayCount; i++) {
-            indicators.push(
-                <span key={`col-${i}`} className="text-orange-500 font-bold text-lg" title="Bonne couleur, mauvaise position">
-                    ●
-                </span>
-            );
-        }
-
-        // Compléter avec des "○" vides (en gris) jusqu'à maxIndicators
-        for (let i = displayCount; i < maxIndicators; i++) {
-            indicators.push(
-                <span key={`col-empty-${i}`} className="text-gray-300 font-bold text-lg" title="Pas présent ou déjà compté">
-                    ○
-                </span>
+                <div key={`row-${row}`} className="flex justify-center space-x-1">
+                    {indicatorsInThisRow}
+                </div>
             );
         }
 
@@ -81,11 +70,11 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                 className={`fixed top-1/2 right-0 transform -translate-y-1/2 z-50 bg-amber-500 hover:bg-amber-600 text-white p-3 transition-all duration-300 ${
                     isExpanded ? 'rounded-l-lg opacity-0 pointer-events-none' : 'rounded-l-lg shadow-lg hover:shadow-xl'
                 }`}
-                title="Ouvrir l'historique"
+                title="Voir l'historique"
             >
                 <div className="flex flex-col items-center space-y-1">
                     <span className="text-sm font-bold">📊</span>
-                    <span className="text-xs font-medium writing-mode-vertical transform rotate-180">
+                    <span className="text-xs font-medium" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
                         Historique
                     </span>
                     <span className="text-xs">
@@ -140,7 +129,7 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                         `}
                                     >
                                         {/* Ligne 1: Numéro de tentative + Combinaison */}
-                                        <div className="flex items-center space-x-3 mb-3">
+                                        <div className="flex items-center space-x-3 mb-4">
                                             {/* Numéro de tentative */}
                                             <div className={`
                                                 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
@@ -180,25 +169,33 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                             )}
                                         </div>
 
-                                        {/* Ligne 2: Indicateurs côte à côte */}
-                                        <div className="flex items-center justify-between space-x-4 text-xs">
+                                        {/* Section des indicateurs côte à côte */}
+                                        <div className="grid grid-cols-2 gap-3">
                                             {/* Bien placées */}
-                                            <div className="flex items-center space-x-1">
-                                                <span className="font-medium text-green-700 whitespace-nowrap">
+                                            <div className="text-center">
+                                                <div className="font-medium text-green-700 text-xs mb-2">
                                                     Bien placées ({attempt.correct_positions})
-                                                </span>
-                                                <div className="flex space-x-0.5">
-                                                    {generateCorrectPositionIndicators(attempt.correct_positions)}
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {generateIndicatorGrid(
+                                                        attempt.correct_positions,
+                                                        "text-green-600",
+                                                        "Bonne couleur, bonne position"
+                                                    )}
                                                 </div>
                                             </div>
 
                                             {/* Mal placées */}
-                                            <div className="flex items-center space-x-1">
-                                                <span className="font-medium text-orange-600 whitespace-nowrap">
+                                            <div className="text-center">
+                                                <div className="font-medium text-orange-600 text-xs mb-2">
                                                     Mal placées ({attempt.correct_colors})
-                                                </span>
-                                                <div className="flex space-x-0.5">
-                                                    {generateCorrectColorIndicators(attempt.correct_colors)}
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {generateIndicatorGrid(
+                                                        attempt.correct_colors,
+                                                        "text-orange-500",
+                                                        "Bonne couleur, mauvaise position"
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -226,23 +223,15 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                     <span>Aucune correspondance</span>
                                 </div>
                             </div>
-                            {combinationLength > 6 && (
-                                <div className="text-xs text-amber-600 mt-2 italic">
-                                    * Max 6 indicateurs affichés par ligne
-                                </div>
-                            )}
+                            <div className="text-xs text-amber-600 mt-2 italic">
+                                * Affichage en grille, max 4 indicateurs par ligne
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Overlay pour fermer en cliquant à côté */}
-            {isExpanded && (
-                <div
-                    className="fixed inset-0 bg-black bg-opacity-25 z-30"
-                    onClick={toggleExpanded}
-                ></div>
-            )}
+            {/* SUPPRIMÉ : Overlay qui fermait automatiquement - maintenant on peut cliquer à côté sans fermer */}
         </>
     );
 };
