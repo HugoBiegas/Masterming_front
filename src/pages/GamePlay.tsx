@@ -403,8 +403,6 @@ export const GamePlay: React.FC = () => {
                     combinationLength={game.combination_length}
                     isQuantumMode={game.game_type === 'quantum'}
                     gameType={game.game_type}
-                    enableSimulation={true}
-                    targetSolution={game.solution}
                 />
             </div>
 
@@ -558,84 +556,6 @@ export const GamePlay: React.FC = () => {
                     </div>
                 )}
             </div>
-
-            {/* Modal de résultat classique */}
-            <Modal
-                isOpen={showResult && !elimination.showEliminationModal}
-                onClose={() => {}}
-                title=""
-                showCloseButton={false}
-            >
-                <div className="text-center space-y-6">
-                    {/* Emoji et titre animés */}
-                    <div className="space-y-4">
-                        <div className={`text-8xl ${isWinner ? 'animate-bounce' : ''}`}>
-                            {isWinner ? '🏆' : '💭'}
-                        </div>
-                        <h2 className={`text-3xl font-bold ${isWinner ? 'text-green-600' : 'text-red-600'}`}>
-                            {isWinner ? "🎉 VICTOIRE !" : "😔 Défaite"}
-                        </h2>
-                    </div>
-
-                    <div className="space-y-2">
-                        <p className="text-lg text-gray-800">
-                            {isWinner
-                                ? `Félicitations ! Vous avez cassé le code secret en ${game.attempts.length} tentatives !`
-                                : "Le code reste un mystère... Mais chaque tentative vous rapproche de la solution !"
-                            }
-                        </p>
-
-                        {/* Affichage de la solution en cas de défaite */}
-                        {!isWinner && game.solution && (
-                            <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4 mt-4">
-                                <div className="text-sm font-semibold text-red-700 mb-2">🔍 La solution était :</div>
-                                <div className="flex justify-center space-x-2">
-                                    {game.solution.map((color, index) => (
-                                        <div
-                                            key={index}
-                                            className="w-8 h-8 rounded-full border-2 border-gray-600 shadow-sm relative"
-                                            style={{
-                                                backgroundColor: COLOR_PALETTE[color - 1] || '#gray',
-                                                boxShadow: `0 2px 4px ${COLOR_PALETTE[color - 1] || '#gray'}40, inset 0 -1px 2px rgba(0,0,0,0.2)`
-                                            }}
-                                            title={`Position ${index + 1}: couleur ${color}`}
-                                        >
-                                            <div className="absolute top-1 left-1 w-2 h-2 bg-white rounded-full opacity-50" />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {isWinner && (
-                            <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4">
-                                <div className="text-2xl font-bold text-green-600 mb-2">
-                                    {currentScore} points
-                                </div>
-                                <div className="text-sm text-green-700">
-                                    🎯 {game.attempts.length} tentatives • ⏱️ {formatTime(timer)}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Boutons d'action */}
-                    <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                        <button
-                            onClick={handleNewGame}
-                            className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-medium transform hover:scale-105"
-                        >
-                            🎮 Nouvelle partie
-                        </button>
-                        <button
-                            onClick={handleBackToMenu}
-                            className="flex-1 bg-gray-500 text-white py-4 px-6 rounded-lg hover:bg-gray-600 transition-all font-medium transform hover:scale-105"
-                        >
-                            🏠 Menu principal
-                        </button>
-                    </div>
-                </div>
-            </Modal>
 
             {/* Modal d'élimination */}
             <EliminationModal

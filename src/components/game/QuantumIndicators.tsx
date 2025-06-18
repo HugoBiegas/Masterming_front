@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { QuantumPositionProbability } from '@/types/game';
 import { COLOR_PALETTE } from '@/utils/constants';
 
@@ -9,6 +9,86 @@ interface QuantumIndicatorsProps {
     compactMode?: boolean;
 }
 
+// Nouveau composant de tooltip séparé avec Portal
+interface QuantumTooltipProps {
+    children: React.ReactNode;
+    targetRef: React.RefObject<HTMLElement>;
+    isVisible: boolean;
+}
+
+const QuantumTooltip: React.FC<QuantumTooltipProps> = ({ children, targetRef, isVisible }) => {
+    const [position, setPosition] = useState({ top: 0, left: 0 });
+    const tooltipRef = useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        if (!isVisible || !targetRef.current) return;
+
+        const updatePosition = () => {
+            if (!targetRef.current || !tooltipRef.current) return;
+
+            const targetRect = targetRef.current.getBoundingClientRect();
+            const tooltipRect = tooltipRef.current.getBoundingClientRect();
+
+            // Position par défaut : à gauche de l'élément
+            let left = targetRect.left - tooltipRect.width - 16;
+            let top = targetRect.top + (targetRect.height / 2) - (tooltipRect.height / 2);
+
+            // Si le tooltip sort à gauche, le mettre à droite
+            if (left < 10) {
+                left = targetRect.right + 16;
+            }
+
+            // Si le tooltip sort à droite, le remettre à gauche mais plus près
+            if (left + tooltipRect.width > window.innerWidth - 10) {
+                left = targetRect.left - tooltipRect.width - 8;
+            }
+
+            // Ajustement vertical si nécessaire
+            if (top < 10) {
+                top = 10;
+            } else if (top + tooltipRect.height > window.innerHeight - 10) {
+                top = window.innerHeight - tooltipRect.height - 10;
+            }
+
+            setPosition({ top, left });
+        };
+
+        // Mise à jour initiale
+        updatePosition();
+
+        // Mise à jour sur scroll ou resize
+        const handleUpdate = () => updatePosition();
+        window.addEventListener('scroll', handleUpdate, true);
+        window.addEventListener('resize', handleUpdate);
+
+        return () => {
+            window.removeEventListener('scroll', handleUpdate, true);
+            window.removeEventListener('resize', handleUpdate);
+        };
+    }, [isVisible, targetRef]);
+
+    if (!isVisible) return null;
+
+    return ReactDOM.createPortal(
+        <div
+            ref={tooltipRef}
+            className="quantum-tooltip-portal"
+            style={{
+                position: 'fixed',
+                top: `${position.top}px`,
+                left: `${position.left}px`,
+                zIndex: 2147483647,
+                pointerEvents: 'none',
+            }}
+        >
+            <div className="bg-gray-900 text-white rounded-lg p-3 shadow-2xl max-w-xs animate-fade-in">
+                {children}
+            </div>
+        </div>,
+        document.body
+    );
+};
+
 export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                                                         positionProbabilities,
                                                                         combinationLength,
@@ -16,6 +96,7 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                                                         compactMode = false
                                                                     }) => {
     const [hoveredPosition, setHoveredPosition] = useState<number | null>(null);
+    const indicatorRefs = useRef<(HTMLDivElement | null)[]>([]);
 
     const getConfidenceColor = (confidence: string) => {
         switch (confidence) {
@@ -80,7 +161,6 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
         return matchTypeMap[matchType as keyof typeof matchTypeMap] || matchType;
     };
 
-    // Calculer la disposition de la grille selon le nombre de positions
     const getGridColumns = () => {
         if (combinationLength <= 4) return combinationLength;
         if (combinationLength <= 6) return 3;
@@ -92,7 +172,6 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
 
     return (
         <div className="space-y-4">
-            {/* Grille des positions quantiques */}
             <div
                 className={`grid ${spacing} justify-items-center`}
                 style={{
@@ -110,25 +189,24 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                             onMouseEnter={() => showDetailedTooltips && setHoveredPosition(index)}
                             onMouseLeave={() => showDetailedTooltips && setHoveredPosition(null)}
                         >
-                            {/* Position number */}
                             <div className={`font-medium text-gray-600 mb-1 ${compactMode ? 'text-xs' : 'text-sm'}`}>
                                 Pos {position.position + 1}
                             </div>
 
-                            {/* Main quantum indicator circle */}
-                            <div className={`
-                                relative ${circleSize} rounded-full border-3 transition-all duration-300 cursor-help
-                                ${getMatchTypeColor(position.match_type)}
-                                ${isHovered ? 'scale-125 shadow-xl' : 'hover:scale-115'}
-                            `}>
-                                {/* Background wave animation proportional to probability */}
+                            <div
+                                ref={el => indicatorRefs.current[index] = el}
+                                className={`
+                                    relative ${circleSize} rounded-full border-3 transition-all duration-300 cursor-help
+                                    ${getMatchTypeColor(position.match_type)}
+                                    ${isHovered ? 'scale-125 shadow-xl' : 'hover:scale-115'}
+                                `}
+                            >
                                 <div
                                     className="absolute inset-0 rounded-full overflow-hidden"
                                     style={{
                                         background: getMatchTypeGradient(position.match_type, position.exact_match_probability)
                                     }}
                                 >
-                                    {/* Animated wave effect */}
                                     <div
                                         className="absolute inset-0 rounded-full animate-pulse-slow"
                                         style={{
@@ -139,20 +217,15 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                     />
                                 </div>
 
-                                {/* Content */}
                                 <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-1">
-                                    {/* Match type icon */}
                                     <div className={compactMode ? 'text-sm mb-0.5' : 'text-base mb-1'}>
                                         {getMatchTypeIcon(position.match_type)}
                                     </div>
-
-                                    {/* Probability percentage */}
                                     <div className={`font-bold text-gray-800 ${compactMode ? 'text-xs' : 'text-sm'}`}>
                                         {probabilityPercent}%
                                     </div>
                                 </div>
 
-                                {/* Color indicator for attempted color */}
                                 <div
                                     className={`absolute -top-1 -right-1 rounded-full border-2 border-white shadow-sm ${
                                         compactMode ? 'w-3 h-3' : 'w-4 h-4'
@@ -163,7 +236,6 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                     title={`Couleur tentée: ${position.attempt_color}`}
                                 />
 
-                                {/* Confidence ring indicator */}
                                 <div className={`
                                     absolute -bottom-1 left-1/2 transform -translate-x-1/2 
                                     ${compactMode ? 'w-6 h-1' : 'w-8 h-1.5'} 
@@ -171,7 +243,6 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                 `} />
                             </div>
 
-                            {/* Confidence text */}
                             <div className={`
                                 font-medium mt-1 px-2 py-0.5 rounded-full text-center
                                 ${getConfidenceColor(position.confidence)}
@@ -180,13 +251,12 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                 {formatConfidence(position.confidence)}
                             </div>
 
-                            {/* Detailed tooltip on hover */}
-                            {showDetailedTooltips && isHovered && (
-                                <div className="absolute top-1/2 right-full mr-4 transform -translate-y-1/2
-                                               bg-gray-900 text-white rounded-lg p-3 opacity-100
-                                               transition-opacity duration-200 pointer-events-none
-                                               shadow-2xl w-64 whitespace-nowrap"
-                                     style={{ zIndex: 99999 }}>
+                            {/* Tooltip avec Portal */}
+                            {showDetailedTooltips && (
+                                <QuantumTooltip
+                                    targetRef={{ current: indicatorRefs.current[index] } as React.RefObject<HTMLElement>}
+                                    isVisible={isHovered}
+                                >
                                     <div className="space-y-2">
                                         <div className="font-bold text-center border-b border-gray-700 pb-2 text-sm">
                                             Position {position.position + 1}
@@ -196,22 +266,18 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                                 <span className="text-gray-300">Probabilité:</span>
                                                 <span className="font-bold text-white">{probabilityPercent}%</span>
                                             </div>
-
                                             <div className="flex justify-between items-center">
                                                 <span className="text-gray-300">Type:</span>
                                                 <span className="font-bold text-white text-right">{formatMatchType(position.match_type)}</span>
                                             </div>
-
                                             <div className="flex justify-between items-center">
                                                 <span className="text-gray-300">Confiance:</span>
                                                 <span className="font-bold text-white">{formatConfidence(position.confidence)}</span>
                                             </div>
-
                                             <div className="flex justify-between items-center">
                                                 <span className="text-gray-300">Mesures:</span>
                                                 <span className="font-bold text-white">{position.quantum_measurements}/{position.total_shots}</span>
                                             </div>
-
                                             <div className="flex justify-between items-center">
                                                 <span className="text-gray-300">Couleur:</span>
                                                 <div className="flex items-center">
@@ -224,10 +290,7 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                                             </div>
                                         </div>
                                     </div>
-                                    {/* Arrow pointing to the right */}
-                                    <div className="absolute top-1/2 left-full transform -translate-y-1/2
-                                                   border-t-4 border-b-4 border-l-4 border-transparent border-l-gray-900" />
-                                </div>
+                                </QuantumTooltip>
                             )}
                         </div>
                     );
@@ -236,3 +299,6 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
         </div>
     );
 };
+
+// Import ReactDOM pour le portal
+import ReactDOM from 'react-dom';
