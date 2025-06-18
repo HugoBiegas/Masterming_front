@@ -92,15 +92,6 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
 
     return (
         <div className="space-y-4">
-            <div className="text-center">
-                <h4 className={`font-semibold text-purple-700 mb-2 ${compactMode ? 'text-sm' : 'text-base'}`}>
-                    🔮 Analyse Quantique
-                </h4>
-                <div className={`text-purple-600 ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                    Probabilités quantiques pour chaque position
-                </div>
-            </div>
-
             {/* Grille des positions quantiques */}
             <div
                 className={`grid ${spacing} justify-items-center`}
@@ -128,7 +119,7 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
                             <div className={`
                                 relative ${circleSize} rounded-full border-3 transition-all duration-300 cursor-help
                                 ${getMatchTypeColor(position.match_type)}
-                                ${isHovered ? 'scale-110 shadow-lg' : 'hover:scale-105'}
+                                ${isHovered ? 'scale-125 shadow-xl' : 'hover:scale-115'}
                             `}>
                                 {/* Background wave animation proportional to probability */}
                                 <div
@@ -191,90 +182,56 @@ export const QuantumIndicators: React.FC<QuantumIndicatorsProps> = ({
 
                             {/* Detailed tooltip on hover */}
                             {showDetailedTooltips && isHovered && (
-                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2
-                                               bg-gray-900 text-white text-xs rounded-lg p-3 opacity-100
-                                               transition-opacity duration-200 pointer-events-none z-30
-                                               whitespace-nowrap shadow-xl">
-                                    <div className="space-y-1">
-                                        <div className="font-semibold text-center border-b border-gray-700 pb-1">
+                                <div className="absolute top-1/2 right-full mr-4 transform -translate-y-1/2
+                                               bg-gray-900 text-white rounded-lg p-3 opacity-100
+                                               transition-opacity duration-200 pointer-events-none
+                                               shadow-2xl w-64 whitespace-nowrap"
+                                     style={{ zIndex: 99999 }}>
+                                    <div className="space-y-2">
+                                        <div className="font-bold text-center border-b border-gray-700 pb-2 text-sm">
                                             Position {position.position + 1}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                                            <span className="text-gray-300">Probabilité:</span>
-                                            <span className="font-medium">{probabilityPercent}%</span>
+                                        <div className="space-y-1.5 text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-300">Probabilité:</span>
+                                                <span className="font-bold text-white">{probabilityPercent}%</span>
+                                            </div>
 
-                                            <span className="text-gray-300">Type:</span>
-                                            <span className="font-medium">{formatMatchType(position.match_type)}</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-300">Type:</span>
+                                                <span className="font-bold text-white text-right">{formatMatchType(position.match_type)}</span>
+                                            </div>
 
-                                            <span className="text-gray-300">Confiance:</span>
-                                            <span className="font-medium">{formatConfidence(position.confidence)}</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-300">Confiance:</span>
+                                                <span className="font-bold text-white">{formatConfidence(position.confidence)}</span>
+                                            </div>
 
-                                            <span className="text-gray-300">Mesures:</span>
-                                            <span className="font-medium">{position.quantum_measurements}/{position.total_shots}</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-300">Mesures:</span>
+                                                <span className="font-bold text-white">{position.quantum_measurements}/{position.total_shots}</span>
+                                            </div>
 
-                                            <span className="text-gray-300">Couleur:</span>
-                                            <div className="flex items-center">
-                                                <div
-                                                    className="w-3 h-3 rounded-full border border-gray-500 mr-1"
-                                                    style={{ backgroundColor: COLOR_PALETTE[position.attempt_color - 1] }}
-                                                />
-                                                <span className="font-medium">#{position.attempt_color}</span>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-300">Couleur:</span>
+                                                <div className="flex items-center">
+                                                    <div
+                                                        className="w-3 h-3 rounded-full border border-gray-400 mr-1"
+                                                        style={{ backgroundColor: COLOR_PALETTE[position.attempt_color - 1] }}
+                                                    />
+                                                    <span className="font-bold text-white">#{position.attempt_color}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                    {/* Arrow pointing down */}
-                                    <div className="absolute top-full left-1/2 transform -translate-x-1/2
-                                                   border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                                    {/* Arrow pointing to the right */}
+                                    <div className="absolute top-1/2 left-full transform -translate-y-1/2
+                                                   border-t-4 border-b-4 border-l-4 border-transparent border-l-gray-900" />
                                 </div>
                             )}
                         </div>
                     );
                 })}
-            </div>
-
-            {/* Statistics summary */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className={`text-purple-700 font-medium mb-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                    📊 Résumé de l'analyse
-                </div>
-                <div className={`grid grid-cols-2 gap-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                    <div className="text-center">
-                        <div className="text-green-700 font-semibold">
-                            {positionProbabilities.filter(p => p.match_type === 'exact_match').length}
-                        </div>
-                        <div className="text-green-600">Positions exactes</div>
-                    </div>
-                    <div className="text-center">
-                        <div className="text-orange-700 font-semibold">
-                            {positionProbabilities.filter(p => p.match_type === 'color_present').length}
-                        </div>
-                        <div className="text-orange-600">Couleurs présentes</div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Legend */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className={`text-purple-700 font-medium mb-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                    Légende quantique :
-                </div>
-                <div className={`grid grid-cols-1 sm:grid-cols-3 gap-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                    <div className="flex items-center space-x-1">
-                        <span>🎯</span>
-                        <span className="text-green-700">Position exacte</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                        <span>🔶</span>
-                        <span className="text-orange-700">Couleur présente</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                        <span>❌</span>
-                        <span className="text-red-700">Aucune correspondance</span>
-                    </div>
-                </div>
-                <div className={`text-purple-600 mt-2 italic ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                    La vague circulaire indique la probabilité quantique (0-100%)
-                </div>
             </div>
         </div>
     );

@@ -1,3 +1,4 @@
+// src/services/game.ts - Version avec debug des appels API
 import {
     Game,
     GameCreateRequest,
@@ -25,7 +26,38 @@ export class GameService {
     }
 
     async getGame(gameId: string): Promise<Game> {
+        console.log('🌐 API Call: GET /api/v1/games/' + gameId);
+
         const response = await apiService.get<Game>(`/api/v1/games/${gameId}`);
+
+        // 🔍 DEBUG: Examiner la réponse brute de l'API
+        console.log('📡 Raw API response for getGame:', response);
+        console.log('📦 Game data from API:', response.data);
+
+        if (response.data.attempts) {
+            console.log('📊 Attempts in API response:', response.data.attempts.length);
+            response.data.attempts.forEach((attempt, index) => {
+                console.log(`🎯 API Attempt ${index + 1}:`, {
+                    attempt_number: attempt.attempt_number,
+                    quantum_calculated: attempt.quantum_calculated,
+                    has_quantum_probabilities: !!attempt.quantum_probabilities,
+                    quantum_probabilities_structure: attempt.quantum_probabilities ? {
+                        exact_matches: attempt.quantum_probabilities.exact_matches,
+                        wrong_position: attempt.quantum_probabilities.wrong_position,
+                        position_probabilities_count: attempt.quantum_probabilities.position_probabilities?.length || 0,
+                        quantum_calculated: attempt.quantum_probabilities.quantum_calculated,
+                        shots_used: attempt.quantum_probabilities.shots_used
+                    } : null,
+                    // Données classiques
+                    exact_matches: attempt.exact_matches,
+                    position_matches: attempt.position_matches,
+                    // Legacy
+                    correct_positions: (attempt as any).correct_positions,
+                    correct_colors: (attempt as any).correct_colors
+                });
+            });
+        }
+
         return response.data;
     }
 
@@ -37,7 +69,20 @@ export class GameService {
     }
 
     async makeAttempt(gameId: string, attempt: AttemptRequest): Promise<AttemptResult> {
+        console.log('🌐 API Call: POST /api/v1/games/' + gameId + '/attempt');
+        console.log('📤 Attempt request:', attempt);
+
         const response = await apiService.post<AttemptResult>(`/api/v1/games/${gameId}/attempt`, attempt);
+
+        // 🔍 DEBUG: Examiner la réponse de makeAttempt
+        console.log('📡 Raw API response for makeAttempt:', response);
+        console.log('✅ AttemptResult from API:', response.data);
+        console.log('🔮 Quantum data in AttemptResult:', {
+            quantum_calculated: response.data.quantum_calculated,
+            quantum_probabilities: response.data.quantum_probabilities,
+            quantum_hint_used: response.data.quantum_hint_used
+        });
+
         return response.data;
     }
 

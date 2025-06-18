@@ -1,3 +1,4 @@
+// src/hooks/useGame.ts - Version avec debug du flow de données
 import { useState, useEffect, useCallback } from 'react';
 import { Game, AttemptRequest, AttemptResult, GameStatus } from '@/types/game';
 import { gameService } from '@/services/game';
@@ -28,10 +29,34 @@ export const useGame = (gameId?: string): UseGameReturn => {
             setLoading(true);
             setError(null);
 
+            console.log('🔍 Fetching game data for ID:', id);
             const gameData = await gameService.getGame(id);
+
+            // 🔍 DEBUG: Examiner les données reçues
+            console.log('📦 Raw game data from backend:', gameData);
+            console.log('📊 Game attempts:', gameData.attempts);
+
+            if (gameData.attempts && gameData.attempts.length > 0) {
+                gameData.attempts.forEach((attempt, index) => {
+                    console.log(`🎯 Attempt ${index + 1}:`, {
+                        id: attempt.id,
+                        attempt_number: attempt.attempt_number,
+                        quantum_calculated: attempt.quantum_calculated,
+                        quantum_probabilities: attempt.quantum_probabilities,
+                        exact_matches: attempt.exact_matches,
+                        position_matches: attempt.position_matches,
+                        // Propriétés legacy
+                        correct_positions: (attempt as any).correct_positions,
+                        correct_colors: (attempt as any).correct_colors,
+                        // Structure complète
+                        full_object: attempt
+                    });
+                });
+            }
+
             setGame(gameData);
         } catch (err: any) {
-            console.error('Erreur lors du chargement de la partie:', err);
+            console.error('❌ Erreur lors du chargement de la partie:', err);
 
             let errorMessage = 'Erreur lors du chargement de la partie';
 
@@ -70,14 +95,24 @@ export const useGame = (gameId?: string): UseGameReturn => {
         try {
             setError(null);
 
+            console.log('🎯 Making attempt:', attempt);
             const result = await gameService.makeAttempt(game.id, attempt);
 
-            // Refresh game data after attempt to get updated state
+            // 🔍 DEBUG: Examiner le résultat de la tentative
+            console.log('✅ Attempt result from backend:', result);
+            console.log('🔮 Quantum data in result:', {
+                quantum_calculated: result.quantum_calculated,
+                quantum_probabilities: result.quantum_probabilities
+            });
+
+            // ⚠️ PROBLÈME POTENTIEL: On refresh la partie après la tentative
+            // Ça peut écraser les données quantiques !
+            console.log('🔄 Refreshing game data...');
             await fetchGame(game.id);
 
             return result;
         } catch (err: any) {
-            console.error('Erreur lors de la tentative:', err);
+            console.error('❌ Erreur lors de la tentative:', err);
 
             let errorMessage = 'Erreur lors de la tentative';
 

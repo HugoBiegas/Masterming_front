@@ -19,14 +19,18 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                                                   gameType
                                                               }) => {
 
-    // 🔍 DÉTECTION SIMPLE des données quantiques réelles
+    // Simple: a-t-on des données quantiques ?
     const hasQuantumData = (attempt: Attempt): boolean => {
-        return attempt.quantum_calculated === true &&
-            !!attempt.quantum_probabilities?.position_probabilities &&
-            attempt.quantum_probabilities.position_probabilities.length > 0;
+        // 🔧 CORRECTION: Le backend renvoie "quantum_data" et non "quantum_probabilities"
+        const quantumData = (attempt as any).quantum_data;
+
+        const hasQuantum = (quantumData?.quantum_calculated === true) &&
+            !!quantumData?.position_probabilities?.length;
+
+        return hasQuantum;
     };
 
-    // Fonction pour générer les indicateurs classiques
+    // Fonction pour les indicateurs classiques
     const generateClassicIndicatorGrid = (count: number, color: string, title: string) => {
         if (count === 0) {
             return (
@@ -63,7 +67,7 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
         return indicators;
     };
 
-    // Compter les tentatives avec données quantiques
+    // Compter les tentatives quantiques
     const quantumAttemptsCount = attempts.filter(hasQuantumData).length;
 
     return (
@@ -71,20 +75,20 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
             <div className="h-full flex flex-col bg-white rounded-l-lg shadow-inner">
                 {/* Header */}
                 <div className={`text-white p-4 rounded-tl-lg flex-shrink-0 ${
-                    isQuantumMode
+                    isQuantumMode || quantumAttemptsCount > 0
                         ? 'bg-gradient-to-r from-purple-500 to-purple-600'
                         : 'bg-gradient-to-r from-amber-500 to-amber-600'
                 }`}>
                     <div className="text-center">
                         <h3 className="text-lg font-bold">
-                            {isQuantumMode ? '🔮 Historique Quantique' : '📊 Historique des tentatives'}
+                            {isQuantumMode || quantumAttemptsCount > 0 ? '🔮 Historique Quantique' : '📊 Historique des tentatives'}
                         </h3>
                         <div className={`text-sm mt-1 ${
-                            isQuantumMode ? 'text-purple-100' : 'text-amber-100'
+                            isQuantumMode || quantumAttemptsCount > 0 ? 'text-purple-100' : 'text-amber-100'
                         }`}>
                             {attempts.length}{maxAttempts ? ` / ${maxAttempts}` : ''} tentatives
-                            {isQuantumMode && quantumAttemptsCount > 0 && (
-                                <span className="ml-2">• {quantumAttemptsCount} avec données quantiques</span>
+                            {quantumAttemptsCount > 0 && (
+                                <span className="ml-2">• {quantumAttemptsCount} quantiques</span>
                             )}
                         </div>
                     </div>
@@ -95,166 +99,125 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                     {attempts.length === 0 ? (
                         <div className="text-center py-8">
                             <div className="text-gray-400 text-4xl mb-2">
-                                {isQuantumMode ? '🔮' : '🎯'}
+                                {isQuantumMode || quantumAttemptsCount > 0 ? '🔮' : '🎯'}
                             </div>
                             <p className="text-gray-500">Aucune tentative pour le moment</p>
                             <p className="text-xs text-gray-400 mt-1">
-                                {isQuantumMode
-                                    ? 'Votre première analyse quantique apparaîtra ici !'
-                                    : 'Faites votre première tentative !'
-                                }
+                                Faites votre première tentative !
                             </p>
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {attempts.map((attempt, index) => {
-                                const hasQuantum = hasQuantumData(attempt);
-                                const shouldShowQuantum = isQuantumMode && hasQuantum;
+                            {[...attempts]
+                                .sort((a, b) => a.attempt_number - b.attempt_number)
+                                .map((attempt) => {
+                                    const shouldShowQuantum = hasQuantumData(attempt);
 
-                                return (
-                                    <div
-                                        key={attempt.id}
-                                        className={`
+                                    return (
+                                        <div
+                                            key={attempt.id}
+                                            className={`
                                             p-4 rounded-lg border-2 transition-all relative
                                             ${attempt.is_correct
-                                            ? 'bg-green-50 border-green-300 shadow-green-100'
-                                            : shouldShowQuantum
-                                                ? 'bg-purple-50 border-purple-300 shadow-purple-100'
-                                                : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                                        }
+                                                ? 'bg-green-50 border-green-300 shadow-green-100'
+                                                : shouldShowQuantum
+                                                    ? 'bg-purple-50 border-purple-300 shadow-purple-100'
+                                                    : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                                            }
                                         `}
-                                    >
-                                        {/* Badge données quantiques */}
-                                        {shouldShowQuantum && (
-                                            <div className="absolute top-2 right-2 text-xs px-2 py-1 rounded-full font-medium bg-green-500 text-white">
-                                                QUANTUM
-                                            </div>
-                                        )}
-
-                                        {/* Ligne 1: Numéro de tentative + Combinaison */}
-                                        <div className="flex items-center space-x-3 mb-4">
-                                            {/* Numéro de tentative */}
-                                            <div className={`
+                                        >
+                                            {/* Ligne 1: Numéro de tentative + Combinaison */}
+                                            <div className="flex items-center space-x-3 mb-4">
+                                                {/* Numéro de tentative */}
+                                                <div className={`
                                                 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
                                                 ${attempt.is_correct
-                                                ? 'bg-green-500 text-white'
-                                                : shouldShowQuantum
-                                                    ? 'bg-purple-500 text-white'
-                                                    : 'bg-gray-400 text-white'
-                                            }
+                                                    ? 'bg-green-500 text-white'
+                                                    : shouldShowQuantum
+                                                        ? 'bg-purple-500 text-white'
+                                                        : 'bg-gray-400 text-white'
+                                                }
                                             `}>
-                                                {attempt.attempt_number}
-                                            </div>
+                                                    {attempt.attempt_number}
+                                                </div>
 
-                                            {/* Combinaison */}
-                                            <div className="flex space-x-1 flex-grow justify-center">
-                                                {attempt.combination.map((color, colorIndex) => (
-                                                    <div
-                                                        key={colorIndex}
-                                                        className="w-6 h-6 rounded-full border-2 border-gray-600 shadow-sm relative"
-                                                        style={{
-                                                            backgroundColor: COLOR_PALETTE[color - 1],
-                                                            boxShadow: `0 1px 3px ${COLOR_PALETTE[color - 1]}40, inset 0 -1px 2px rgba(0,0,0,0.2)`
-                                                        }}
-                                                        title={`Position ${colorIndex + 1}`}
-                                                    >
-                                                        <div className="absolute top-0.5 left-0.5 w-1 h-1 bg-white rounded-full opacity-50"></div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                                {/* Combinaison */}
+                                                <div className="flex space-x-1 flex-grow justify-center">
+                                                    {attempt.combination.map((color, colorIndex) => (
+                                                        <div
+                                                            key={colorIndex}
+                                                            className="w-6 h-6 rounded-full border-2 border-gray-600 shadow-sm relative"
+                                                            style={{
+                                                                backgroundColor: COLOR_PALETTE[color - 1],
+                                                                boxShadow: `0 1px 3px ${COLOR_PALETTE[color - 1]}40, inset 0 -1px 2px rgba(0,0,0,0.2)`
+                                                            }}
+                                                            title={`Position ${colorIndex + 1}`}
+                                                        >
+                                                            <div className="absolute top-0.5 left-0.5 w-1 h-1 bg-white rounded-full opacity-50"></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
 
-                                            {/* Badge de statut */}
-                                            <div className="flex-shrink-0">
-                                                {attempt.is_correct ? (
-                                                    <span className="bg-green-500 text-white px-1.5 py-0.5 rounded-full text-xs font-bold">
+                                                {/* Badge de statut */}
+                                                <div className="flex-shrink-0">
+                                                    {attempt.is_correct ? (
+                                                        <span className="bg-green-500 text-white px-1.5 py-0.5 rounded-full text-xs font-bold">
                                                         🏆
                                                     </span>
-                                                ) : shouldShowQuantum ? (
-                                                    <span className="bg-purple-500 text-white px-1.5 py-0.5 rounded-full text-xs font-bold">
+                                                    ) : shouldShowQuantum ? (
+                                                        <span className="bg-purple-500 text-white px-1.5 py-0.5 rounded-full text-xs font-bold">
                                                         🔮
                                                     </span>
-                                                ) : null}
+                                                    ) : null}
+                                                </div>
                                             </div>
+
+                                            {/* Section des indicateurs */}
+                                            {shouldShowQuantum ? (
+                                                // Affichage quantique avec vraies données
+                                                <div className="mt-4">
+                                                    <QuantumIndicators
+                                                        positionProbabilities={(attempt as any).quantum_data.position_probabilities}
+                                                        combinationLength={combinationLength}
+                                                        showDetailedTooltips={true}
+                                                        compactMode={false}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                // Affichage classique
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {/* Bien placées */}
+                                                    <div className="text-center">
+                                                        <div className="font-medium text-green-700 text-xs mb-2">
+                                                            Bien placées ({(attempt as any).correct_positions || 0})
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            {generateClassicIndicatorGrid(
+                                                                (attempt as any).correct_positions || 0,
+                                                                "text-green-600",
+                                                                "Bonne couleur, bonne position"
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Mal placées */}
+                                                    <div className="text-center">
+                                                        <div className="font-medium text-orange-600 text-xs mb-2">
+                                                            Mal placées ({(attempt as any).correct_colors || 0})
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            {generateClassicIndicatorGrid(
+                                                                (attempt as any).correct_colors || 0,
+                                                                "text-orange-500",
+                                                                "Bonne couleur, mauvaise position"
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-
-                                        {/* Section des indicateurs */}
-                                        {shouldShowQuantum ? (
-                                            // Affichage quantique avec vraies données
-                                            <div className="mt-4">
-                                                <QuantumIndicators
-                                                    positionProbabilities={attempt.quantum_probabilities!.position_probabilities}
-                                                    combinationLength={combinationLength}
-                                                    showDetailedTooltips={true}
-                                                    compactMode={false}
-                                                />
-
-                                                {/* Informations quantiques */}
-                                                <div className="mt-3 bg-purple-100 border border-purple-200 rounded-lg p-2">
-                                                    <div className="text-xs text-purple-700 space-y-1">
-                                                        <div className="flex justify-between">
-                                                            <span>Mesures quantiques totales:</span>
-                                                            <span className="font-semibold">
-                                                                {attempt.quantum_probabilities!.shots_used}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span>Positions exactes:</span>
-                                                            <span className="font-semibold text-green-600">
-                                                                {attempt.quantum_probabilities!.exact_matches}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span>Couleurs mal placées:</span>
-                                                            <span className="font-semibold text-orange-600">
-                                                                {attempt.quantum_probabilities!.wrong_position}
-                                                            </span>
-                                                        </div>
-                                                        {attempt.quantum_hint_used && (
-                                                            <div className="text-purple-600 font-medium">
-                                                                💡 Indice quantique utilisé
-                                                            </div>
-                                                        )}
-                                                        <div className="text-green-600 font-medium text-xs">
-                                                            ✅ Données quantiques du backend
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            // Affichage classique
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {/* Bien placées */}
-                                                <div className="text-center">
-                                                    <div className="font-medium text-green-700 text-xs mb-2">
-                                                        Bien placées ({attempt.exact_matches || 0})
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        {generateClassicIndicatorGrid(
-                                                            attempt.exact_matches || 0,
-                                                            "text-green-600",
-                                                            "Bonne couleur, bonne position"
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* Mal placées */}
-                                                <div className="text-center">
-                                                    <div className="font-medium text-orange-600 text-xs mb-2">
-                                                        Mal placées ({attempt.position_matches || 0})
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        {generateClassicIndicatorGrid(
-                                                            attempt.position_matches || 0,
-                                                            "text-orange-500",
-                                                            "Bonne couleur, mauvaise position"
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
                         </div>
                     )}
                 </div>
@@ -263,15 +226,11 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                 <div className="border-t border-gray-200 p-3 bg-gray-50 rounded-bl-lg flex-shrink-0">
                     <div className="text-xs text-gray-600 space-y-1">
                         <div className="font-medium text-gray-700 mb-2">
-                            {isQuantumMode ? 'Légende quantique :' : 'Légende classique :'}
+                            Légende :
                         </div>
 
-                        {isQuantumMode ? (
+                        {quantumAttemptsCount > 0 ? (
                             <div className="space-y-1">
-                                <div className="flex items-center space-x-2">
-                                    <span className="text-purple-600 font-bold">🔮</span>
-                                    <span>Analyse quantique (données réelles)</span>
-                                </div>
                                 <div className="flex items-center space-x-2">
                                     <span>🎯</span>
                                     <span>Position exacte (haute probabilité)</span>
@@ -284,8 +243,13 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                     <span>❌</span>
                                     <span>Aucune correspondance détectée</span>
                                 </div>
-                                <div className="text-xs text-green-600 mt-2 italic">
-                                    * Données quantiques fournies par le backend
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-green-600 font-bold">●</span>
+                                    <span>Bonne couleur, bonne position (classique)</span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-orange-500 font-bold">●</span>
+                                    <span>Bonne couleur, mauvaise position (classique)</span>
                                 </div>
                             </div>
                         ) : (
@@ -304,13 +268,6 @@ export const AttemptHistory: React.FC<AttemptHistoryProps> = ({
                                 </div>
                             </div>
                         )}
-
-                        <div className="text-xs text-gray-500 mt-2 italic">
-                            {isQuantumMode
-                                ? '* Les vagues circulaires indiquent les probabilités quantiques'
-                                : '* Affichage en grille, max 4 indicateurs par ligne'
-                            }
-                        </div>
                     </div>
                 </div>
             </div>

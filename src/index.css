@@ -515,3 +515,154 @@ select:focus-visible {
 .history-scroll-container::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
 }
+
+/* ======= SOLUTION COMPLÈTE POUR LES SUPERPOSITIONS TOOLTIPS ======= */
+
+/* 1. Isolation CSS - Crée un nouveau stacking context */
+.quantum-tooltip-container {
+    isolation: isolate !important;
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+/* 2. Tooltip avec le plus haut z-index possible */
+.quantum-tooltip-ultimate {
+    position: fixed !important;
+    z-index: 2147483647 !important; /* Maximum z-index value */
+    isolation: isolate !important;
+    transform: translate3d(0, 0, 0) !important;
+    will-change: transform !important;
+    pointer-events: none !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    -moz-transform: translate3d(0, 0, 0) !important;
+    -ms-transform: translate3d(0, 0, 0) !important;
+    -o-transform: translate3d(0, 0, 0) !important;
+}
+
+/* 3. Override pour tous les conteneurs parents potentiels */
+.history-fixed-fullscreen,
+.page-with-history,
+.container,
+.min-h-screen,
+.bg-gradient-to-br {
+    isolation: auto !important;
+}
+
+/* 4. Force la création d'un nouveau stacking context avec transform */
+.quantum-indicators-wrapper {
+    transform: translate3d(0, 0, 0) !important;
+    will-change: transform !important;
+    isolation: isolate !important;
+}
+
+/* 5. Alternative portal-like container pour les tooltips */
+.tooltip-portal-container {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    pointer-events: none !important;
+    z-index: 999999999 !important;
+    isolation: isolate !important;
+    transform: translate3d(0, 0, 0) !important;
+}
+
+/* 6. Override pour header et tous les éléments avec z-index */
+header,
+.bg-blue-600,
+.bg-gradient-to-r {
+    z-index: auto !important;
+    isolation: auto !important;
+}
+
+/* 7. Assure que le body ne crée pas de stacking context */
+body {
+    isolation: auto !important;
+    z-index: auto !important;
+    position: static !important;
+}
+
+/* 8. Fix pour les modals et overlays */
+.modal-overlay,
+.modal-content {
+    z-index: 1000 !important;
+}
+
+/* 9. Tooltip spécifique avec toutes les protections */
+.quantum-tooltip-fixed {
+    position: fixed !important;
+    top: 50% !important;
+    left: 16px !important;
+    transform: translateY(-50%) translate3d(0, 0, 0) !important;
+    z-index: 2147483647 !important;
+    isolation: isolate !important;
+    will-change: transform !important;
+    pointer-events: none !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+    -moz-backface-visibility: hidden !important;
+    -ms-backface-visibility: hidden !important;
+    -o-backface-visibility: hidden !important;
+}
+
+/* 10. Debug helper - border rouge pour identifier les stacking contexts */
+.debug-stacking-context {
+    outline: 2px solid red !important;
+    outline-offset: -2px !important;
+}
+
+/* 11. Force au niveau racine */
+#root {
+    isolation: auto !important;
+    z-index: auto !important;
+    position: static !important;
+}
+
+/* 12. Webkit et autres préfixes pour compatibilité */
+.quantum-tooltip-ultimate,
+.quantum-tooltip-fixed {
+    -webkit-isolation: isolate !important;
+    -moz-isolation: isolate !important;
+    -ms-isolation: isolate !important;
+    -o-isolation: isolate !important;
+}
+
+/* 13. Animation safe pour les tooltips */
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50%) translate3d(-10px, 0, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(-50%) translate3d(0, 0, 0);
+    }
+}
+
+.quantum-tooltip-animated {
+    animation: tooltipFadeIn 0.2s ease-out !important;
+}
+
+/* 14. Media query pour écrans plus petits */
+@media (max-width: 768px) {
+    .quantum-tooltip-fixed {
+        left: 8px !important;
+        width: calc(100vw - 400px) !important;
+        max-width: 250px !important;
+    }
+}
+
+/* 15. Backup solution avec portals */
+.react-portal-tooltip {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none !important;
+    z-index: 2147483647 !important;
+    isolation: isolate !important;
+}
+
+/* ======= FIN SOLUTION SUPERPOSITIONS ======= */
