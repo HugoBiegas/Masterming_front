@@ -48,7 +48,7 @@ export class GameService {
 
     // Nouvelle méthode pour quitter toutes les parties actives
     async leaveAllActiveGames(): Promise<LeaveGameResponse> {
-        const response = await apiService.post<LeaveGameResponse>('/api/v1/games/leave');
+        const response = await apiService.post<LeaveGameResponse>('/api/v1/games/leave-all-active');
         return response.data;
     }
 
