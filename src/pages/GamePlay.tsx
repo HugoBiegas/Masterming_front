@@ -8,7 +8,7 @@ import { EliminationNotification } from '@/components/game/EliminationNotificati
 import { GameBoard } from '@/components/game/GameBoard';
 import { ColorPicker } from '@/components/game/ColorPicker';
 import { AttemptHistory } from '@/components/game/AttemptHistory';
-import { VictoryDefeatDisplay } from '@/components/game/VictoryDefeatDisplay'; // NOUVEAU
+import { VictoryDefeatDisplay } from '@/components/game/VictoryDefeatDisplay';
 import { useGame } from '@/hooks/useGame';
 import { useElimination } from '@/hooks/useElimination';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -51,19 +51,47 @@ export const GamePlay: React.FC = () => {
     // NOUVEAU: État pour la solution révélée
     const [revealedSolution, setRevealedSolution] = useState<number[] | null>(null);
 
+    // 🔒 NOUVEAU: États persistants pour le ColorPicker
+    const [isColorPickerExpanded, setIsColorPickerExpanded] = useState(false);
+    const [isColorPickerLocked, setIsColorPickerLocked] = useState(false);
+
     // Refs pour éviter les boucles infinies
     const hasShownWelcomeMessage = useRef(false);
     const hasShownGameFinishedMessage = useRef(false);
     const hasShownVictoryMessage = useRef(false);
 
-    // Map pour tracker les éliminations affichées
+    // 🔧 CORRIGÉ: Map pour tracker les éliminations affichées avec plus de sécurité
     const shownEliminations = useRef(new Set<string>());
+    const eliminationProcessed = useRef(false);
 
     // Fonction pour obtenir le joueur actuel
     const getCurrentPlayer = useCallback(() => {
         if (!game?.participants || !user?.id) return null;
         return game.participants.find(p => p.user_id === user.id);
     }, [game?.participants, user?.id]);
+
+    // 🔒 NOUVEAU: Fonctions pour gérer l'état du ColorPicker
+    const handleToggleColorPickerExpanded = useCallback(() => {
+        setIsColorPickerExpanded(prev => {
+            // Si on ferme manuellement, déverrouiller aussi
+            if (prev && isColorPickerLocked) {
+                setIsColorPickerLocked(false);
+            }
+            return !prev;
+        });
+    }, [isColorPickerLocked]);
+
+    const handleToggleColorPickerLocked = useCallback(() => {
+        setIsColorPickerLocked(prev => {
+            const newLocked = !prev;
+            // Si on verrouille, ouvrir automatiquement
+            if (newLocked && !isColorPickerExpanded) {
+                setIsColorPickerExpanded(true);
+            }
+            console.log('🔒 ColorPicker lock toggled:', newLocked);
+            return newLocked;
+        });
+    }, [isColorPickerExpanded]);
 
     // Initialiser la combinaison actuelle
     useEffect(() => {
@@ -77,32 +105,63 @@ export const GamePlay: React.FC = () => {
                 showSuccess(`🎯 Partie démarrée ! ${game.combination_length} positions, ${game.available_colors} couleurs`);
             }
         }
-    }, [game?.id, game?.combination_length, game?.status, game?.available_colors]);
+    }, [game?.id, game?.combination_length, game?.status, game?.available_colors, showSuccess]);
 
-    // Reset du hook d'élimination lors du changement de partie
+    // 🔧 CORRIGÉ: Reset du hook d'élimination lors du changement de partie
     useEffect(() => {
         elimination.reset();
         shownEliminations.current.clear();
-    }, [game?.id]);
+        eliminationProcessed.current = false;
+        console.log('🔄 Reset éliminations pour nouvelle partie:', game?.id);
+    }, [game?.id, elimination]);
 
-    // Surveiller les éliminations d'autres joueurs
+    // 🔧 CORRIGÉ: Surveiller les éliminations d'autres joueurs SANS boucle infinie
     useEffect(() => {
-        if (!game?.participants || !user?.id || !game.max_attempts) return;
+        // Éviter les appels multiples
+        if (!game?.participants || !user?.id || !game.max_attempts || eliminationProcessed.current) {
+            return;
+        }
+
+        let hasNewElimination = false;
 
         game.participants.forEach(participant => {
-            if (participant.user_id !== user.id &&
-                participant.status === 'eliminated' &&
-                !shownEliminations.current.has(participant.user_id)) {
-
-                shownEliminations.current.add(participant.user_id);
-
-                elimination.handleOtherPlayerEliminated(
-                    participant.username,
-                    participant.attempts_count || 0,
-                    game.max_attempts || 0
-                );
+            // 🔧 CORRIGÉ: Vérifications de sécurité strictes
+            if (!participant ||
+                !participant.user_id ||
+                !participant.username ||
+                participant.user_id === user.id ||
+                participant.status !== 'eliminated' ||
+                shownEliminations.current.has(participant.user_id)) {
+                return;
             }
+
+            console.log('🔍 Nouvel joueur éliminé détecté:', {
+                username: participant.username,
+                user_id: participant.user_id,
+                status: participant.status,
+                attempts: participant.attempts_count
+            });
+
+            shownEliminations.current.add(participant.user_id);
+            hasNewElimination = true;
+
+            // 🔧 CORRIGÉ: Validation des données avant affichage + types corrects
+            const playerName = participant.username || 'Joueur inconnu';
+            const attempts = participant.attempts_count ?? 0;  // Utiliser ?? pour gérer undefined
+            const maxAttempts = game.max_attempts ?? 10;       // Valeur par défaut si undefined
+
+            elimination.handleOtherPlayerEliminated(
+                playerName,
+                attempts,
+                maxAttempts
+            );
         });
+
+        // Marquer comme traité pour éviter les répétitions
+        if (hasNewElimination) {
+            eliminationProcessed.current = true;
+        }
+
     }, [game?.participants, user?.id, game?.max_attempts, elimination]);
 
     // Timer
@@ -127,7 +186,12 @@ export const GamePlay: React.FC = () => {
             const currentPlayer = getCurrentPlayer();
             if (!currentPlayer || currentPlayer.status === 'eliminated') return;
 
-            const remainingAttempts = game.max_attempts - (currentPlayer.attempts_count || game.attempts.length);
+            // 🔧 CORRIGÉ: Gestion des valeurs undefined avec valeurs par défaut
+            const playerAttempts = currentPlayer.attempts_count ?? 0;
+            const gameAttempts = game.attempts?.length ?? 0;
+            const maxAttempts = game.max_attempts ?? 10;
+
+            const remainingAttempts = maxAttempts - Math.max(playerAttempts, gameAttempts);
 
             if (lastAlertAttempts.current !== remainingAttempts) {
                 lastAlertAttempts.current = remainingAttempts;
@@ -249,6 +313,7 @@ export const GamePlay: React.FC = () => {
         });
     }, [isGameActive, showError]);
 
+    // 🔒 MODIFIÉ: handleColorSelect pour conserver la couleur entre les actualisations
     const handleColorSelect = useCallback((color: number) => {
         if (!isGameActive) {
             showError('⏸️ La partie n\'est plus active !');
@@ -260,14 +325,22 @@ export const GamePlay: React.FC = () => {
         } else {
             setSelectedColor(color);
         }
-    }, [selectedColor, isGameActive, showError]);
 
+        // 🔒 NOUVEAU: Log pour tracer la persistance
+        console.log('🎨 Couleur sélectionnée:', color, 'Verrouillé:', isColorPickerLocked);
+    }, [selectedColor, isGameActive, isColorPickerLocked, showError]);
+
+    // 🔒 MODIFIÉ: resetCombination pour préserver la couleur sélectionnée si verrouillée
     const resetCombination = useCallback(() => {
         if (game) {
             setCurrentCombination(new Array(game.combination_length).fill(0));
-            setSelectedColor(null);
+            // 🔒 NOUVEAU: Ne réinitialiser selectedColor que si pas verrouillé
+            if (!isColorPickerLocked) {
+                setSelectedColor(null);
+            }
+            console.log('🔄 Combinaison réinitialisée, couleur préservée:', isColorPickerLocked);
         }
-    }, [game?.combination_length]);
+    }, [game?.combination_length, isColorPickerLocked]);
 
     // Vérifier si on peut faire une tentative
     const currentPlayer = getCurrentPlayer();
@@ -300,7 +373,7 @@ export const GamePlay: React.FC = () => {
 
                 if (result.is_winning) {
                     setIsWinner(true);
-                    setCurrentScore(result.score);
+                    setCurrentScore(result.score ?? 0);  // 🔧 CORRIGÉ: Valeur par défaut
                     setIsTimerRunning(false);
                     setTimeout(() => setShowResult(true), 1500);
 
@@ -309,9 +382,9 @@ export const GamePlay: React.FC = () => {
                     if (currentPlayer && currentPlayer.status === 'eliminated') {
                         // Joueur éliminé lors de la fin de partie
                         elimination.handlePlayerEliminated(
-                            result.attempt_number,
-                            game.max_attempts || 0,
-                            result.score
+                            result.attempt_number ?? 1,  // 🔧 CORRIGÉ: Valeur par défaut
+                            game.max_attempts ?? 10,     // 🔧 CORRIGÉ: Valeur par défaut
+                            result.score ?? 0            // 🔧 CORRIGÉ: Valeur par défaut
                         );
                     } else {
                         // Fin de partie normale (défaite sans élimination)
@@ -323,14 +396,17 @@ export const GamePlay: React.FC = () => {
                     // Vérifier l'élimination sur tentative normale
                     const currentPlayer = getCurrentPlayer();
                     if (currentPlayer && game.max_attempts) {
-                        const remainingAttempts = game.max_attempts - result.attempt_number;
+                        // 🔧 CORRIGÉ: Gestion des valeurs undefined
+                        const attemptNumber = result.attempt_number ?? 1;
+                        const maxAttempts = game.max_attempts ?? 10;
+                        const remainingAttempts = maxAttempts - attemptNumber;
 
                         if (remainingAttempts === 0 && !result.is_winning) {
                             // Plus de tentatives = élimination
                             elimination.handlePlayerEliminated(
-                                result.attempt_number,
-                                game.max_attempts,
-                                result.score
+                                attemptNumber,
+                                maxAttempts,
+                                result.score ?? 0
                             );
                         } else {
                             // Continuer le jeu
@@ -397,6 +473,7 @@ export const GamePlay: React.FC = () => {
     }
 
     const difficultyConfig = DIFFICULTY_CONFIGS[game.difficulty] || DIFFICULTY_CONFIGS.medium;
+    // 🔧 CORRIGÉ: Utiliser attempts au lieu de maxAttempts
     const maxAttempts = game.max_attempts || difficultyConfig.attempts;
     const remainingAttempts = maxAttempts - game.attempts.length;
 
@@ -523,16 +600,20 @@ export const GamePlay: React.FC = () => {
                             canSubmit={canSubmit}
                         />
 
-                        {/* Sélecteur de couleurs */}
+                        {/* 🔒 MODIFIÉ: Sélecteur de couleurs avec état persistant */}
                         <ColorPicker
                             availableColors={game.available_colors}
                             selectedColor={selectedColor}
                             onColorSelect={handleColorSelect}
+                            isExpanded={isColorPickerExpanded}
+                            onToggleExpanded={handleToggleColorPickerExpanded}
+                            isLocked={isColorPickerLocked}
+                            onToggleLocked={handleToggleColorPickerLocked}
                         />
                     </div>
                 )}
 
-                {/* Zone pour les parties terminées - REMPLACÉE */}
+                {/* Zone pour les parties terminées */}
                 {(game.status === GameStatus.FINISHED || showResult) && revealedSolution && (
                     <VictoryDefeatDisplay
                         isWinner={isWinner}
@@ -554,20 +635,23 @@ export const GamePlay: React.FC = () => {
                 maxAttempts={elimination.eliminationData.maxAttempts}
                 score={elimination.eliminationData.score}
                 difficulty={game?.difficulty?.charAt(0).toUpperCase() + game?.difficulty?.slice(1) || 'Medium'}
+                // 🔧 CORRIGÉ: Utiliser les bonnes valeurs en minuscules
                 gameMode={game?.game_mode === 'single' ? 'solo' : 'multiplayer'}
                 gameFinished={isGameFinished}
                 otherPlayersRemaining={game?.participants?.filter(p => p.status === 'active').length || 0}
                 solution={revealedSolution || game?.solution}
             />
 
-            {/* Notification d'élimination pour autres joueurs */}
-            <EliminationNotification
-                playerName={elimination.eliminatedPlayerName}
-                attempts={elimination.eliminationData.attemptsMade}
-                maxAttempts={elimination.eliminationData.maxAttempts}
-                show={elimination.showEliminationNotification}
-                onClose={elimination.closeEliminationNotification}
-            />
+            {/* 🔧 CORRIGÉ: Notification d'élimination avec les bonnes props - SEULEMENT si pas de toast infini */}
+            {elimination.showEliminationNotification && elimination.eliminatedPlayerName && (
+                <EliminationNotification
+                    playerName={elimination.eliminatedPlayerName}
+                    attempts={elimination.eliminationData.attemptsMade}
+                    maxAttempts={elimination.eliminationData.maxAttempts}
+                    show={elimination.showEliminationNotification}
+                    onClose={elimination.closeEliminationNotification}
+                />
+            )}
         </div>
     );
 };

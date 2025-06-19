@@ -1,4 +1,4 @@
-// src/hooks/useGame.ts - Version minimale compatible avec votre code existant
+// src/hooks/useGame.ts - Version corrigée pour comptage des tentatives
 
 import { useState, useEffect, useCallback } from 'react';
 import { Game, AttemptRequest, AttemptResult, GameStatus } from '@/types/game';
@@ -28,7 +28,7 @@ export const useGame = (gameId?: string): UseGameReturn => {
     const [revealedSolution, setRevealedSolution] = useState<number[] | null>(null);
     const [solutionReason, setSolutionReason] = useState<'victory' | 'elimination' | 'game_finished' | null>(null);
 
-    // === VOTRE LOGIQUE EXISTANTE (ne pas modifier) ===
+    // === LOGIQUE EXISTANTE (ne pas modifier) ===
 
     const fetchGame = useCallback(async (id: string) => {
         if (!id) return;
@@ -77,7 +77,7 @@ export const useGame = (gameId?: string): UseGameReturn => {
         }
     }, [gameId, fetchGame]);
 
-    // MODIFIÉ: makeAttempt avec gestion de la solution
+    // 🔧 CORRECTION: makeAttempt avec rafraîchissement systématique
     const makeAttempt = useCallback(async (attempt: AttemptRequest): Promise<AttemptResult | null> => {
         if (!game) {
             setError('Aucune partie active');
@@ -109,9 +109,14 @@ export const useGame = (gameId?: string): UseGameReturn => {
                 console.log(`🎯 Solution révélée pour: ${reason}`);
             }
 
-            // Votre logique existante pour rafraîchir le jeu
-            if (result && !result.game_finished && !result.is_winning) {
-                setTimeout(() => refreshGame(), 500);
+            // 🔧 CORRECTION PRINCIPALE: Rafraîchir TOUJOURS le jeu après une tentative
+            // Cela garantit que la tentative gagnante soit incluse dans l'historique
+            if (result) {
+                console.log('🔄 Rafraîchissement du jeu pour inclure la nouvelle tentative...');
+                setTimeout(() => {
+                    refreshGame();
+                    console.log('✅ Jeu rafraîchi, tentatives mises à jour');
+                }, 500);
             }
 
             return result;
