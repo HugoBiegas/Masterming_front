@@ -8,6 +8,7 @@ import { EliminationNotification } from '@/components/game/EliminationNotificati
 import { GameBoard } from '@/components/game/GameBoard';
 import { ColorPicker } from '@/components/game/ColorPicker';
 import { AttemptHistory } from '@/components/game/AttemptHistory';
+import { VictoryDefeatDisplay } from '@/components/game/VictoryDefeatDisplay'; // NOUVEAU
 import { useGame } from '@/hooks/useGame';
 import { useElimination } from '@/hooks/useElimination';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -46,6 +47,9 @@ export const GamePlay: React.FC = () => {
     const [isTimerRunning, setIsTimerRunning] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
     const [isStarting, setIsStarting] = useState(false);
+
+    // NOUVEAU: État pour la solution révélée
+    const [revealedSolution, setRevealedSolution] = useState<number[] | null>(null);
 
     // Refs pour éviter les boucles infinies
     const hasShownWelcomeMessage = useRef(false);
@@ -289,6 +293,11 @@ export const GamePlay: React.FC = () => {
             const result = await makeAttempt({ combination: currentCombination });
 
             if (result) {
+                // NOUVEAU: Vérifier si la solution est révélée
+                if (result.solution && result.solution.length > 0) {
+                    setRevealedSolution(result.solution);
+                }
+
                 if (result.is_winning) {
                     setIsWinner(true);
                     setCurrentScore(result.score);
@@ -500,8 +509,8 @@ export const GamePlay: React.FC = () => {
                     </div>
                 )}
 
-                {/* Zone de jeu principale - sans historique dans le layout */}
-                {game.status === GameStatus.ACTIVE && (
+                {/* Zone de jeu principale - masquée si solution révélée */}
+                {game.status === GameStatus.ACTIVE && !revealedSolution && (
                     <div className="space-y-6">
                         {/* Plateau de jeu */}
                         <GameBoard
@@ -523,37 +532,17 @@ export const GamePlay: React.FC = () => {
                     </div>
                 )}
 
-                {/* Zone pour les parties terminées */}
-                {game.status === GameStatus.FINISHED && (
-                    <div className="flex items-center justify-center min-h-[400px]">
-                        <div className="text-center bg-white rounded-lg shadow-lg p-8 max-w-md">
-                            <div className="text-6xl mb-4">
-                                {isWinner ? '🏆' : '🎯'}
-                            </div>
-                            <h2 className="text-2xl font-bold mb-4">
-                                {isWinner ? 'Partie terminée - Victoire !' : 'Partie terminée'}
-                            </h2>
-                            <p className="text-gray-600 mb-6">
-                                Consultez l'historique de vos tentatives à droite
-                            </p>
-
-                            {/* Boutons d'action pour partie terminée */}
-                            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                                <button
-                                    onClick={handleNewGame}
-                                    className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-medium transform hover:scale-105"
-                                >
-                                    🎮 Nouvelle partie
-                                </button>
-                                <button
-                                    onClick={handleBackToMenu}
-                                    className="flex-1 bg-gray-500 text-white py-3 px-6 rounded-lg hover:bg-gray-600 transition-all font-medium transform hover:scale-105"
-                                >
-                                    🏠 Menu principal
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                {/* Zone pour les parties terminées - REMPLACÉE */}
+                {(game.status === GameStatus.FINISHED || showResult) && revealedSolution && (
+                    <VictoryDefeatDisplay
+                        isWinner={isWinner}
+                        playerScore={currentScore}
+                        playerAttempts={game.attempts.length}
+                        maxAttempts={maxAttempts}
+                        solution={revealedSolution}
+                        onNewGame={handleNewGame}
+                        onBackToMenu={handleBackToMenu}
+                    />
                 )}
             </div>
 
@@ -568,7 +557,7 @@ export const GamePlay: React.FC = () => {
                 gameMode={game?.game_mode === 'single' ? 'solo' : 'multiplayer'}
                 gameFinished={isGameFinished}
                 otherPlayersRemaining={game?.participants?.filter(p => p.status === 'active').length || 0}
-                solution={game?.solution}
+                solution={revealedSolution || game?.solution}
             />
 
             {/* Notification d'élimination pour autres joueurs */}
