@@ -14,7 +14,7 @@ import {
     PlayerItem,
     PlayerProgress,
     GameMastermind,
-    PlayerLeaderboard
+    PlayerLeaderboard, GameResults
 } from '@/types/multiplayer';
 
 export class MultiplayerService {
@@ -62,6 +62,52 @@ export class MultiplayerService {
             { password: request.password }
         );
         return response.data;
+    }
+    async getGameResults(gameId: string): Promise<GameResults> {
+        // TODO: Cette route n'existe pas encore dans le backend
+        // Pour l'instant, on simule avec les données de la partie
+        try {
+            const game = await this.getMultiplayerGame(gameId);
+
+            // Simulation temporaire des résultats
+            const mockResults: GameResults = {
+                game_id: gameId,
+                final_leaderboard: game.player_progresses?.map((player, index) => ({
+                    user_id: player.user_id,
+                    username: player.username,
+                    final_position: index + 1,
+                    total_score: player.score || 0,
+                    masterminds_completed: player.current_mastermind || 1,
+                    total_time: 300, // Mock
+                    items_used: player.items?.length || 0
+                })) || [],
+                game_stats: {
+                    total_duration: 1800, // Mock 30 minutes
+                    total_masterminds: game.total_masterminds,
+                    total_attempts: 50, // Mock
+                    items_used: 15 // Mock
+                },
+                player_stats: {}
+            };
+
+            // Ajouter les stats individuelles
+            game.player_progresses?.forEach((player, index) => {
+                mockResults.player_stats[player.user_id] = {
+                    final_position: index + 1,
+                    total_score: player.score || 0,
+                    masterminds_completed: player.current_mastermind || 1,
+                    best_time: 180, // Mock
+                    items_used: player.items?.length || 0,
+                    favorite_item: player.items?.[0]?.item_type
+                };
+            });
+
+            return mockResults;
+        } catch (error) {
+            // Si la partie n'existe plus, on essaie la vraie route
+            const response = await apiService.get<GameResults>(`/api/v1/multiplayer/results/${gameId}`);
+            return response.data;
+        }
     }
 
     async leaveMultiplayerGame(gameId: string): Promise<{ message: string }> {
@@ -309,25 +355,6 @@ export class MultiplayerService {
             'eliminated': 'Éliminé'
         };
         return statusNames[status as keyof typeof statusNames] || status;
-    }
-
-    sortPlayersByPosition(players: PlayerProgress[]): PlayerProgress[] {
-        return players.sort((a, b) => {
-            // D'abord par masterminds complétés (décroissant)
-            if (a.completed_masterminds !== b.completed_masterminds) {
-                return b.completed_masterminds - a.completed_masterminds;
-            }
-            // Puis par score total (décroissant)
-            if (a.total_score !== b.total_score) {
-                return b.total_score - a.total_score;
-            }
-            // Enfin par temps total (croissant)
-            return a.total_time - b.total_time;
-        });
-    }
-
-    isGameJoinable(game: PublicGameListing): boolean {
-        return game.status === 'waiting' && game.current_players < game.max_players;
     }
 
     validateMastermindOptions(total: number): boolean {

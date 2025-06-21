@@ -2,6 +2,16 @@ import { Difficulty, DifficultyConfig, GameType, GameMode } from '@/types/game';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+export enum GameStatus {
+    WAITING = 'waiting',
+    STARTING = 'starting',
+    ACTIVE = 'active',
+    PAUSED = 'paused',
+    FINISHED = 'finished',
+    CANCELLED = 'cancelled',
+    ABORTED = 'aborted'
+}
+
 export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     [Difficulty.EASY]: {
         colors: 4,
@@ -57,6 +67,9 @@ export const GAME_MODE_INFO = {
         available: false
     }
 };
+// Autres constantes utiles
+export const DEFAULT_TIMEOUT = 5000;
+export const WEBSOCKET_RECONNECT_DELAY = 1000;
 
 export const GAME_TYPE_INFO = {
     [GameType.CLASSIC]: {
@@ -108,7 +121,7 @@ export const SCORE_PENALTY_PER_ATTEMPT = 10;
 // Constantes pour les limites
 export const MAX_GAME_DURATION = 3600; // 1 heure
 export const MIN_PLAYERS = 1;
-export const MAX_PLAYERS = 8;
+export const MAX_PLAYERS = 12;
 export const MAX_ATTEMPTS_LIMIT = 50;
 export const MIN_COMBINATION_LENGTH = 3;
 export const MAX_COMBINATION_LENGTH = 8;

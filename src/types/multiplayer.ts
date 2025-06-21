@@ -1,174 +1,127 @@
-// src/types/multiplayer.ts
-// Types étendus pour le mode multijoueur avec objets bonus/malus
+// Types pour le système multijoueur de Quantum Mastermind
 
-import { GameType, GameMode, Difficulty, GameStatus } from './game';
-
-// === ÉNUMÉRATIONS MULTIJOUEUR ===
-
+// Énumérations de base
 export enum MultiplayerGameType {
-    MULTI_MASTERMIND = "multi_mastermind",
-    BATTLE_ROYALE = "battle_royale",
-    TOURNAMENT = "tournament"
+    MULTI_MASTERMIND = 'multi_mastermind',
+    BATTLE_ROYALE = 'battle_royale',
+    TOURNAMENT = 'tournament'
 }
 
 export enum ItemType {
-    // Bonus pour soi
-    EXTRA_HINT = "extra_hint",
-    TIME_BONUS = "time_bonus",
-    SKIP_MASTERMIND = "skip_mastermind",
-    DOUBLE_SCORE = "double_score",
+    // Objets bonus pour soi
+    EXTRA_HINT = 'extra_hint',
+    TIME_BONUS = 'time_bonus',
+    SKIP_MASTERMIND = 'skip_mastermind',
+    DOUBLE_SCORE = 'double_score',
 
-    // Malus pour les adversaires
-    FREEZE_TIME = "freeze_time",
-    ADD_MASTERMIND = "add_mastermind",
-    REDUCE_ATTEMPTS = "reduce_attempts",
-    SCRAMBLE_COLORS = "scramble_colors"
+    // Objets malus pour les adversaires
+    FREEZE_TIME = 'freeze_time',
+    ADD_MASTERMIND = 'add_mastermind',
+    REDUCE_ATTEMPTS = 'reduce_attempts',
+    SCRAMBLE_COLORS = 'scramble_colors'
 }
 
 export enum ItemRarity {
-    COMMON = "common",
-    RARE = "rare",
-    EPIC = "epic",
-    LEGENDARY = "legendary"
+    COMMON = 'common',
+    RARE = 'rare',
+    EPIC = 'epic',
+    LEGENDARY = 'legendary'
 }
 
 export enum PlayerStatus {
-    WAITING = "waiting",
-    PLAYING = "playing",
-    MASTERMIND_COMPLETE = "mastermind_complete",
-    FINISHED = "finished",
-    ELIMINATED = "eliminated"
+    WAITING = 'waiting',
+    PLAYING = 'playing',
+    MASTERMIND_COMPLETE = 'mastermind_complete',
+    FINISHED = 'finished',
+    ELIMINATED = 'eliminated'
 }
 
-// === INTERFACES PRINCIPALES ===
+export enum Difficulty {
+    EASY = 'easy',
+    MEDIUM = 'medium',
+    HARD = 'hard',
+    EXPERT = 'expert'
+}
 
-export interface GameItem {
+// Interfaces principales
+export interface MultiplayerGame {
     id: string;
-    name: string;
-    description: string;
-    item_type: ItemType;
-    rarity: ItemRarity;
-    is_self_target: boolean;
-    duration_seconds?: number;
-    effect_value?: number;
-    obtained_at?: string;
-}
-
-export interface PlayerItem {
-    type: string;
-    name: string;
-    description: string;
-    rarity: string;
-    obtained_at: string;
-}
-
-export interface GameMastermind {
-    id: string;
-    mastermind_number: number;
-    solution: number[];
-    combination_length: number;
-    available_colors: number;
-    max_attempts: number;
-    is_active: boolean;
-    is_completed: boolean;
-    completed_at?: string;
+    base_game: {
+        id: string;
+        creator_id: string;
+        status: string;
+        difficulty: Difficulty;
+        room_code: string;
+        is_private: boolean;
+        created_at: string;
+        available_colors: number;
+    };
+    max_players: number;
+    current_players: number;
+    total_masterminds: number;
+    items_enabled: boolean;
+    game_type: MultiplayerGameType;
+    player_progresses: PlayerProgress[];
+    masterminds: GameMastermind[];
 }
 
 export interface PlayerProgress {
     id: string;
     user_id: string;
     username: string;
-    current_mastermind: number;
-    completed_masterminds: number;
-    total_score: number;
-    total_time: number;
     status: PlayerStatus;
-    is_finished: boolean;
-    finish_position?: number;
-    finish_time?: string;
-    collected_items: PlayerItem[];
-    used_items: PlayerItem[];
-}
-
-export interface PlayerMastermindAttempt {
-    id: string;
-    attempt_number: number;
-    combination: number[];
-    exact_matches: number;
-    position_matches: number;
-    is_correct: boolean;
-    attempt_score: number;
-    time_taken: number;
-    quantum_calculated?: boolean;
-    quantum_probabilities?: any;
-    created_at: string;
-}
-
-export interface PlayerLeaderboard {
-    id: string;
-    user_id: string;
-    username: string;
-    final_position: number;
-    total_score: number;
-    masterminds_completed: number;
-    total_time: number;
-    total_attempts: number;
-    items_collected: number;
-    items_used: number;
-    best_mastermind_time?: number;
-    worst_mastermind_time?: number;
-}
-
-export interface MultiplayerGame {
-    id: string;
-    base_game_id: string;
-    game_type: MultiplayerGameType;
-    total_masterminds: number;
-    difficulty: Difficulty;
     current_mastermind: number;
-    is_final_mastermind: boolean;
-    items_enabled: boolean;
-    items_per_mastermind: number;
-    created_at: string;
-    started_at?: string;
-    finished_at?: string;
-    player_progresses: PlayerProgress[];
-    masterminds: GameMastermind[];
-    leaderboard: PlayerLeaderboard[];
+    score: number;
+    attempts_count: number;
+    is_finished: boolean;
+    finish_time?: string;
+    items: PlayerItem[];
 }
 
-// === REQUÊTES ET RÉPONSES API ===
-
-export interface MultiplayerGameCreateRequest {
-    game_mode: GameMode.MULTIPLAYER;
-    difficulty: Difficulty;
-    total_masterminds: 3 | 6 | 9 | 12;
-    max_players: number; // max 12
-    is_private: boolean;
-    password?: string;
-    items_enabled?: boolean;
-    allow_spectators?: boolean;
-    enable_chat?: boolean;
-}
-
-export interface MultiplayerGameCreateResponse {
+export interface PlayerItem {
     id: string;
-    room_code: string;
-    multiplayer_game: MultiplayerGame;
-    message: string;
+    item_type: ItemType;
+    rarity: ItemRarity;
+    obtained_at: string;
+    used_at?: string;
+}
+
+export interface GameMastermind {
+    id: string;
+    mastermind_number: number;
+    solution: number[];
+    is_active: boolean;
+    max_attempts: number;
 }
 
 export interface PublicGameListing {
     id: string;
-    room_code: string;
     creator_username: string;
     difficulty: Difficulty;
-    total_masterminds: number;
-    current_players: number;
     max_players: number;
-    status: GameStatus;
+    current_players: number;
+    total_masterminds: number;
+    items_enabled: boolean;
+    is_private: boolean;
     created_at: string;
-    avg_player_level?: number;
+    room_code: string;
+}
+
+// Interfaces pour les requêtes API
+export interface MultiplayerGameCreateRequest {
+    game_type: MultiplayerGameType;
+    difficulty: Difficulty;
+    total_masterminds: number;
+    max_players: number;
+    is_private: boolean;
+    password?: string;
+    items_enabled: boolean;
+}
+
+export interface MultiplayerGameCreateResponse {
+    success: boolean;
+    message: string;
+    game: MultiplayerGame;
 }
 
 export interface JoinGameRequest {
@@ -178,120 +131,237 @@ export interface JoinGameRequest {
 
 export interface JoinGameResponse {
     success: boolean;
-    game: MultiplayerGame;
     message: string;
-}
-
-// === WEBSOCKET EVENTS ===
-
-export interface MultiplayerWebSocketEvents {
-    // Progression des joueurs
-    PLAYER_MASTERMIND_COMPLETE: {
-        player_id: string;
-        username: string;
-        mastermind_number: number;
-        score: number;
-        time_taken: number;
-        items_obtained: PlayerItem[];
-    };
-
-    // Utilisation d'objets
-    ITEM_USED: {
-        player_id: string;
-        username: string;
-        item: PlayerItem;
-        target_players?: string[]; // Pour les malus
-        effect_duration?: number;
-    };
-
-    // Effets appliqués
-    EFFECT_APPLIED: {
-        effect_type: ItemType;
-        affected_players: string[];
-        duration?: number;
-        message: string;
-    };
-
-    // Changements de statut
-    PLAYER_STATUS_CHANGED: {
-        player_id: string;
-        username: string;
-        old_status: PlayerStatus;
-        new_status: PlayerStatus;
-        current_mastermind?: number;
-    };
-
-    // Progression générale
-    GAME_PROGRESS_UPDATE: {
-        current_mastermind: number;
-        is_final_mastermind: boolean;
-        player_progresses: PlayerProgress[];
-        leaderboard_preview: PlayerLeaderboard[];
-    };
-
-    // Fin de partie
-    MULTIPLAYER_GAME_FINISHED: {
-        final_leaderboard: PlayerLeaderboard[];
-        winner: PlayerLeaderboard;
-        total_duration: number;
-        stats: {
-            total_attempts: number;
-            total_items_used: number;
-            average_completion_time: number;
-        };
-    };
-}
-
-// === HOOKS ET UTILITAIRES ===
-
-export interface UseMultiplayerGameReturn {
-    multiplayerGame: MultiplayerGame | null;
-    loading: boolean;
-    error: string | null;
-    joinGame: (request: JoinGameRequest) => Promise<boolean>;
-    leaveGame: () => Promise<void>;
-    useItem: (itemType: ItemType, targetPlayers?: string[]) => Promise<boolean>;
-    getCurrentMastermind: () => GameMastermind | null;
-    getPlayerProgress: (userId: string) => PlayerProgress | null;
-    getMyProgress: () => PlayerProgress | null;
-    refreshGame: () => Promise<void>;
+    game: MultiplayerGame;
 }
 
 export interface MultiplayerGameFilters {
     difficulty?: Difficulty;
     max_players?: number;
     has_slots?: boolean;
-    sort_by?: 'created_at' | 'players_count' | 'difficulty';
+    sort_by?: string;
     sort_order?: 'asc' | 'desc';
 }
 
-// === CONSTANTES ET CONFIGURATIONS ===
+export interface MultiplayerAttemptRequest {
+    mastermind_number: number;
+    combination: number[];
+}
 
-export const MASTERMIND_OPTIONS = [3, 6, 9, 12] as const;
-export const MAX_MULTIPLAYER_PLAYERS = 12;
+export interface MultiplayerAttemptResponse {
+    attempt: {
+        id: string;
+        combination: number[];
+        black_pegs: number;
+        white_pegs: number;
+        attempt_number: number;
+        created_at: string;
+    };
+    mastermind_completed: boolean;
+    items_obtained?: PlayerItem[];
+    score: number;
+    next_mastermind?: GameMastermind;
+    game_finished?: boolean;
+    final_position?: number;
+}
 
-export const ITEM_RARITY_COLORS = {
-    [ItemRarity.COMMON]: 'text-gray-600',
-    [ItemRarity.RARE]: 'text-blue-600',
-    [ItemRarity.EPIC]: 'text-purple-600',
-    [ItemRarity.LEGENDARY]: 'text-yellow-600'
-} as const;
+export interface ItemUseRequest {
+    item_type: ItemType;
+    target_players?: string[];
+}
 
-export const ITEM_DESCRIPTIONS = {
-    [ItemType.EXTRA_HINT]: "Révèle une couleur correcte",
-    [ItemType.TIME_BONUS]: "+30 secondes de temps",
-    [ItemType.DOUBLE_SCORE]: "Score x2 pour le prochain mastermind",
-    [ItemType.SKIP_MASTERMIND]: "Complète automatiquement un mastermind",
-    [ItemType.FREEZE_TIME]: "Gèle le temps des adversaires pendant 30s",
-    [ItemType.ADD_MASTERMIND]: "Ajoute un mastermind à tous les adversaires",
-    [ItemType.REDUCE_ATTEMPTS]: "Réduit les tentatives des adversaires de 2",
-    [ItemType.SCRAMBLE_COLORS]: "Mélange l'affichage des couleurs des adversaires pendant 60s"
-} as const;
+export interface ItemUseResponse {
+    success: boolean;
+    message: string;
+    effect_applied?: {
+        effect_id: string;
+        duration: number;
+        targets: string[];
+    };
+}
 
-export const STATUS_COLORS = {
-    [PlayerStatus.WAITING]: 'text-gray-500',
-    [PlayerStatus.PLAYING]: 'text-blue-600',
-    [PlayerStatus.MASTERMIND_COMPLETE]: 'text-green-600',
-    [PlayerStatus.FINISHED]: 'text-purple-600',
-    [PlayerStatus.ELIMINATED]: 'text-red-600'
-} as const;
+// Interfaces pour les statistiques
+export interface PlayerLeaderboard {
+    user_id: string;
+    username: string;
+    final_position: number;
+    total_score: number;
+    masterminds_completed: number;
+    total_time: number;
+    items_used: number;
+}
+
+export interface GlobalStats {
+    total_games_played: number;
+    total_players: number;
+    average_game_duration: number;
+    most_popular_difficulty: Difficulty;
+    top_players: PlayerLeaderboard[];
+}
+
+export interface PlayerStatsResponse {
+    games_played: number;
+    games_won: number;
+    win_rate: number;
+    average_score: number;
+    total_masterminds_completed: number;
+    favorite_difficulty: Difficulty;
+    most_used_items: Array<{
+        item_type: ItemType;
+        count: number;
+    }>;
+    best_time: number;
+    rank: number;
+}
+
+// Interfaces pour les WebSockets
+export interface WebSocketMessage {
+    type: string;
+    data: any;
+}
+
+export interface MultiplayerWebSocketEvents {
+    PLAYER_JOINED: {
+        username: string;
+        players_count: number;
+    };
+
+    PLAYER_LEFT: {
+        username: string;
+        players_count: number;
+    };
+
+    GAME_STARTED: {
+        game_id: string;
+        current_mastermind: number;
+    };
+
+    PLAYER_MASTERMIND_COMPLETE: {
+        player_id: string;
+        username: string;
+        mastermind_number: number;
+        score: number;
+        items_obtained: PlayerItem[];
+    };
+
+    ITEM_USED: {
+        player_id: string;
+        username: string;
+        item_type: ItemType;
+        target_players?: string[];
+        message: string;
+    };
+
+    EFFECT_APPLIED: {
+        effect_id: string;
+        effect_type: ItemType;
+        duration: number;
+        message: string;
+    };
+
+    PLAYER_STATUS_CHANGED: {
+        player_id: string;
+        username: string;
+        old_status: PlayerStatus;
+        new_status: PlayerStatus;
+    };
+
+    GAME_PROGRESS_UPDATE: {
+        current_mastermind: number;
+        is_final_mastermind: boolean;
+        player_progresses: PlayerProgress[];
+    };
+
+    MULTIPLAYER_GAME_FINISHED: {
+        final_leaderboard: PlayerLeaderboard[];
+        game_id: string;
+    };
+
+    CHAT_MESSAGE: {
+        user_id: string;
+        username: string;
+        message: string;
+        timestamp: string;
+    };
+}
+
+// Types d'effets actifs
+export interface ActiveEffect {
+    type: ItemType;
+    endTime: number;
+    message: string;
+}
+
+// Configuration des objets
+export interface ItemConfig {
+    name: string;
+    description: string;
+    icon: string;
+    category: 'bonus' | 'malus';
+    usageType: 'self' | 'others' | 'all';
+    rarity: ItemRarity;
+    duration?: number;
+    cooldown?: number;
+}
+
+// Interface pour les résultats de partie
+export interface GameResults {
+    game_id: string;
+    final_leaderboard: PlayerLeaderboard[];
+    game_stats: {
+        total_duration: number;
+        total_masterminds: number;
+        total_attempts: number;
+        items_used: number;
+    };
+    player_stats: {
+        [userId: string]: {
+            final_position: number;
+            total_score: number;
+            masterminds_completed: number;
+            best_time: number;
+            items_used: number;
+            favorite_item?: string;
+        };
+    };
+}
+
+// Interface pour la pagination
+export interface PaginationResponse<T> {
+    items: T[];
+    total: number;
+    page: number;
+    limit: number;
+    has_next: boolean;
+    has_prev: boolean;
+}
+
+// Types utilitaires
+export type MultiplayerGameResponse = {
+    success: boolean;
+    message?: string;
+    game?: MultiplayerGame;
+    error?: string;
+};
+
+export type GameActionResult = {
+    success: boolean;
+    message: string;
+    data?: any;
+};
+
+// Interface pour les hooks personnalisés
+export interface UseMultiplayerReturn {
+    multiplayerGame: MultiplayerGame | null;
+    loading: boolean;
+    error: string | null;
+    isConnected: boolean;
+    activeEffects: { [key: string]: ActiveEffect };
+    joinGame: (request: JoinGameRequest) => Promise<boolean>;
+    leaveGame: () => Promise<void>;
+    makeAttempt: (mastermindNumber: number, combination: number[]) => Promise<MultiplayerAttemptResponse | null>;
+    useItem: (itemType: ItemType, targetPlayers?: string[]) => Promise<void>;
+    connectWebSocket: () => void;
+    disconnectWebSocket: () => void;
+    refreshGame: () => Promise<void>;
+}
