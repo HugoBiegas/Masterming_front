@@ -10,7 +10,6 @@ import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { multiplayerService } from '@/services/multiplayer';
-import { GameStatus } from '@/types/game';
 
 export const MultiplayerLobby: React.FC = () => {
     const { gameId } = useParams<{ gameId: string }>();
@@ -19,291 +18,274 @@ export const MultiplayerLobby: React.FC = () => {
     const { showSuccess, showError, showWarning } = useNotification();
 
     const {
-        multiplayerGame,
+        currentRoom,
+        players,
         loading,
         error,
-        isConnected,
-        connectWebSocket,
-        disconnectWebSocket
+        isHost,
+        canStart,
+        isGameActive,
+        startGame,
+        leaveRoom,
+        refreshRoom
     } = useMultiplayer(gameId);
 
     const [isStarting, setIsStarting] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
-    const [gameInfo, setGameInfo] = useState<any>(null);
     const [chatMessages, setChatMessages] = useState<any[]>([]);
-
-    // État de connexion WebSocket
-    useEffect(() => {
-        if (gameId && user?.access_token) {
-            connectWebSocket();
-        }
-
-        return () => {
-            disconnectWebSocket();
-        };
-    }, [gameId, user?.access_token]);
 
     // Redirection si la partie a commencé
     useEffect(() => {
-        if (multiplayerGame?.base_game?.status === GameStatus.ACTIVE) {
+        if (isGameActive) {
             navigate(`/multiplayer/game/${gameId}`);
         }
-    }, [multiplayerGame?.base_game?.status, gameId, navigate]);
+    }, [isGameActive, gameId, navigate]);
 
-    // Charger les informations de la partie
-    useEffect(() => {
-        const loadGameInfo = async () => {
-            if (!gameId) return;
-
-            try {
-                const game = await multiplayerService.getMultiplayerGame(gameId);
-                setGameInfo(game);
-            } catch (error) {
-                console.error('Erreur chargement info partie:', error);
-            }
-        };
-
-        loadGameInfo();
-    }, [gameId]);
-
+    // Démarrer la partie
     const handleStartGame = async () => {
-        if (!gameId || !gameInfo) return;
-
-        // Vérifier si l'utilisateur est le créateur
-        if (gameInfo.base_game.creator_id !== user?.id) {
-            showError('Seul le créateur peut démarrer la partie');
-            return;
-        }
-
-        // Vérifier le nombre minimum de joueurs
-        if (gameInfo.current_players < 2) {
-            showError('Il faut au moins 2 joueurs pour démarrer');
-            return;
-        }
+        if (!currentRoom || !canStart) return;
 
         setIsStarting(true);
-
         try {
-            const response = await multiplayerService.startMultiplayerGame(gameId);
-
-            if (response.success) {
-                showSuccess('Partie démarrée !');
-                // La redirection se fera automatiquement via l'effect sur le statut
-            } else {
-                showError(response.message || 'Erreur lors du démarrage');
-            }
+            await startGame();
+            showSuccess('🚀 Partie démarrée !');
         } catch (error: any) {
             console.error('Erreur démarrage:', error);
-            showError(error.response?.data?.detail || 'Impossible de démarrer la partie');
+            showError('Erreur lors du démarrage de la partie');
         } finally {
             setIsStarting(false);
         }
     };
 
-    const handleLeaveGame = async () => {
-        if (!gameId) return;
-
+    // Quitter le salon
+    const handleLeaveRoom = async () => {
         setIsLeaving(true);
-
         try {
-            await multiplayerService.leaveMultiplayerGame(gameId);
-            showSuccess('Vous avez quitté la partie');
+            await leaveRoom();
+            showSuccess('Vous avez quitté le salon');
             navigate('/multiplayer/browse');
         } catch (error: any) {
-            console.error('Erreur quitter partie:', error);
-            showError(error.response?.data?.detail || 'Erreur lors de la sortie');
+            console.error('Erreur en quittant:', error);
+            showError('Erreur lors de la sortie du salon');
         } finally {
             setIsLeaving(false);
             setShowLeaveModal(false);
         }
     };
 
+    // Copier le code du salon
     const handleCopyRoomCode = () => {
-        if (gameInfo?.base_game?.room_code) {
-            navigator.clipboard.writeText(gameInfo.base_game.room_code);
-            showSuccess('Code de room copié !');
+        if (currentRoom?.room_code) {
+            navigator.clipboard.writeText(currentRoom.room_code);
+            showSuccess('Code du salon copié !');
         }
-    };
-
-    const handleCopyInviteLink = () => {
-        const inviteUrl = `${window.location.origin}/multiplayer/join/${gameInfo?.base_game?.room_code}`;
-        navigator.clipboard.writeText(inviteUrl);
-        showSuccess('Lien d\'invitation copié !');
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
                     <LoadingSpinner size="lg" />
-                    <p className="mt-4 text-gray-600">Chargement du lobby...</p>
+                    <p className="mt-4 text-gray-600">Chargement du salon...</p>
                 </div>
             </div>
         );
     }
 
-    if (error || !gameInfo) {
+    if (error || !currentRoom) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
                     <div className="text-red-500 text-6xl mb-4">⚠️</div>
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Partie introuvable</h2>
-                    <p className="text-gray-600 mb-4">
-                        {error || 'Impossible de charger les informations de la partie'}
-                    </p>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur</h2>
+                    <p className="text-gray-600 mb-4">{error || 'Salon introuvable'}</p>
                     <button
                         onClick={() => navigate('/multiplayer/browse')}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
                     >
-                        Retour aux parties
+                        Retour aux salons
                     </button>
                 </div>
             </div>
         );
     }
 
-    const isCreator = gameInfo.base_game.creator_id === user?.id;
-    const canStart = isCreator && gameInfo.current_players >= 2;
-
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
             <Header />
 
             <div className="container mx-auto py-6 px-4">
-                {/* En-tête du lobby */}
-                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-                        <div className="mb-4 lg:mb-0">
-                            <h1 className="text-2xl font-bold text-gray-800 mb-2">
-                                🎯 Lobby Multijoueur
+
+                {/* En-tête du salon */}
+                <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                                🏠 Salon : {currentRoom.name}
                             </h1>
-                            <div className="flex items-center space-x-4 text-sm text-gray-600">
-                                <span>Room: <code className="bg-gray-100 px-2 py-1 rounded font-mono">
-                                    {gameInfo.base_game.room_code}
-                                </code></span>
-                                <span>Joueurs: {gameInfo.current_players}/{gameInfo.max_players}</span>
-                                <div className={`flex items-center ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-                                    <div className={`w-2 h-2 rounded-full mr-1 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                                    {isConnected ? 'Connecté' : 'Déconnecté'}
-                                </div>
-                            </div>
+                            <p className="text-gray-600">
+                                Code du salon : <span className="font-mono font-bold">{currentRoom.room_code}</span>
+                            </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex space-x-3">
                             <button
                                 onClick={handleCopyRoomCode}
-                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center"
+                                title="Copier le code du salon"
                             >
                                 📋 Copier le code
                             </button>
+
                             <button
-                                onClick={handleCopyInviteLink}
-                                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                                onClick={() => setShowLeaveModal(true)}
+                                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
                             >
-                                🔗 Lien d'invitation
+                                🚪 Quitter
                             </button>
                         </div>
+                    </div>
+
+                    {/* Statut et informations */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                currentRoom.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' :
+                                    currentRoom.status === 'active' ? 'bg-green-100 text-green-800' :
+                                        'bg-gray-100 text-gray-800'
+                            }`}>
+                                {multiplayerService.getRoomStatusIcon(currentRoom)} {multiplayerService.getRoomStatusText(currentRoom)}
+                            </span>
+
+                            <span className="text-sm text-gray-600">
+                                👥 {currentRoom.current_players}/{currentRoom.max_players} joueurs
+                            </span>
+
+                            {isHost && (
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
+                                    👑 Hôte
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Actions de l'hôte */}
+                        {isHost && currentRoom.status === 'waiting' && (
+                            <button
+                                onClick={handleStartGame}
+                                disabled={!canStart || isStarting}
+                                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                                title={canStart ? 'Démarrer la partie' : 'Minimum 2 joueurs requis'}
+                            >
+                                {isStarting ? (
+                                    <>
+                                        <LoadingSpinner size="sm" className="mr-2" />
+                                        Démarrage...
+                                    </>
+                                ) : (
+                                    <>
+                                        ▶️ Démarrer la partie
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Panneau principal - Joueurs et paramètres */}
-                    <div className="lg:col-span-2 space-y-6">
 
-                        {/* Liste des joueurs */}
-                        <div className="bg-white rounded-lg shadow-md p-6">
-                            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                                👥 Joueurs connectés ({gameInfo.current_players}/{gameInfo.max_players})
-                            </h2>
-                            <PlayersList
-                                players={multiplayerGame?.player_progresses || []}
-                                currentUserId={user?.id}
-                                creatorId={gameInfo.base_game.creator_id}
-                            />
-                        </div>
-
-                        {/* Paramètres de la partie */}
-                        <div className="bg-white rounded-lg shadow-md p-6">
-                            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                                ⚙️ Paramètres de la partie
+                    {/* Paramètres du salon */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                                ⚙️ Paramètres
                             </h2>
                             <GameSettings
-                                gameInfo={gameInfo}
-                                isCreator={isCreator}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Panneau latéral - Chat */}
-                    <div className="space-y-6">
-                        <div className="bg-white rounded-lg shadow-md p-6">
-                            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                                💬 Chat du lobby
-                            </h2>
-                            <ChatBox
-                                gameId={gameId}
-                                messages={chatMessages}
-                                onSendMessage={(message) => {
-                                    // TODO: Implémenter l'envoi de messages
-                                    console.log('Message envoyé:', message);
+                                gameInfo={{
+                                    base_game: {
+                                        difficulty: currentRoom.difficulty,
+                                        room_code: currentRoom.room_code,
+                                        is_private: currentRoom.is_private,
+                                        created_at: currentRoom.created_at
+                                    },
+                                    max_players: currentRoom.max_players,
+                                    total_masterminds: 1, // Valeur par défaut
+                                    items_enabled: false, // Valeur par défaut
+                                    current_players: currentRoom.current_players,
+                                    game_type: currentRoom.game_type
                                 }}
+                                isCreator={isHost}
+                                readOnly={true}
                             />
                         </div>
-                    </div>
-                </div>
 
-                {/* Barre d'actions */}
-                <div className="bg-white rounded-lg shadow-md p-6 mt-6">
-                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-
-                        {/* Informations de statut */}
-                        <div className="text-sm text-gray-600">
-                            {isCreator ? (
-                                <span>🚀 Vous êtes le créateur. Démarrez quand vous êtes prêt !</span>
-                            ) : (
-                                <span>⏳ En attente que le créateur démarre la partie...</span>
-                            )}
+                        {/* Instructions */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <h4 className="font-medium text-blue-800 mb-2">ℹ️ Instructions :</h4>
+                            <ul className="text-sm text-blue-700 space-y-1">
+                                <li>• Attendez que l'hôte démarre la partie</li>
+                                <li>• Minimum 2 joueurs requis</li>
+                                <li>• Partagez le code du salon avec vos amis</li>
+                                {isHost && <li>• En tant qu'hôte, vous pouvez démarrer quand vous êtes prêt</li>}
+                            </ul>
                         </div>
+                    </div>
 
-                        {/* Boutons d'action */}
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowLeaveModal(true)}
-                                disabled={isLeaving}
-                                className="px-6 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
-                            >
-                                {isLeaving ? 'Sortie...' : '🚪 Quitter'}
-                            </button>
+                    {/* Liste des joueurs */}
+                    <div className="lg:col-span-2">
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-semibold text-gray-800">
+                                    👥 Joueurs ({currentRoom.current_players}/{currentRoom.max_players})
+                                </h2>
 
-                            {isCreator && (
                                 <button
-                                    onClick={handleStartGame}
-                                    disabled={!canStart || isStarting}
-                                    className="px-8 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                                    onClick={refreshRoom}
+                                    className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+                                    title="Actualiser la liste"
                                 >
-                                    {isStarting ? (
-                                        <>
-                                            <LoadingSpinner size="sm" className="mr-2" />
-                                            Démarrage...
-                                        </>
-                                    ) : (
-                                        '🚀 Démarrer la partie'
-                                    )}
+                                    🔄 Actualiser
                                 </button>
+                            </div>
+
+                            <PlayersList
+                                players={players}
+                                currentUserId={user?.id}
+                                showProgress={false}
+                                creatorId={''}
+                            />
+
+                            {/* Slots vides */}
+                            {currentRoom.current_players < currentRoom.max_players && (
+                                <div className="mt-4 space-y-2">
+                                    {Array.from({
+                                        length: currentRoom.max_players - currentRoom.current_players
+                                    }, (_, index) => (
+                                        <div
+                                            key={index}
+                                            className="p-3 border-2 border-dashed border-gray-300 rounded-lg text-center text-gray-500"
+                                        >
+                                            <span className="text-lg">👤</span>
+                                            <span className="ml-2 text-sm">En attente d'un joueur...</span>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
-                    </div>
 
-                    {/* Aides contextuelles */}
-                    {isCreator && gameInfo.current_players < 2 && (
-                        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <p className="text-sm text-yellow-800">
-                                ⚠️ Il faut au moins 2 joueurs pour démarrer la partie.
-                                Partagez le code <strong>{gameInfo.base_game.room_code}</strong> ou le lien d'invitation !
-                            </p>
-                        </div>
-                    )}
+                        {/* Chat (si activé) */}
+                        {currentRoom.enable_chat && (
+                            <div className="bg-white rounded-lg shadow-lg mt-6">
+                                <ChatBox
+                                    messages={chatMessages}
+                                    onSendMessage={(message) => {
+                                        // TODO: Implémenter l'envoi de message
+                                        console.log('Envoi message:', message);
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -311,27 +293,37 @@ export const MultiplayerLobby: React.FC = () => {
             <Modal
                 isOpen={showLeaveModal}
                 onClose={() => setShowLeaveModal(false)}
-                title="Quitter la partie"
+                title="🚪 Quitter le salon"
             >
                 <div className="p-6">
-                    <p className="text-gray-600 mb-6">
-                        Êtes-vous sûr de vouloir quitter cette partie ?
-                        {isCreator && ' En tant que créateur, cela supprimera la partie pour tous les joueurs.'}
+                    <p className="text-gray-600 mb-4">
+                        Êtes-vous sûr de vouloir quitter ce salon ?
                     </p>
-
-                    <div className="flex gap-3 justify-end">
+                    {isHost && (
+                        <p className="text-sm text-orange-600 mb-6">
+                            ⚠️ En tant qu'hôte, quitter le salon peut affecter les autres joueurs.
+                        </p>
+                    )}
+                    <div className="flex space-x-3">
                         <button
                             onClick={() => setShowLeaveModal(false)}
-                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                         >
                             Annuler
                         </button>
                         <button
-                            onClick={handleLeaveGame}
+                            onClick={handleLeaveRoom}
                             disabled={isLeaving}
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center justify-center"
                         >
-                            {isLeaving ? 'Sortie...' : 'Quitter'}
+                            {isLeaving ? (
+                                <>
+                                    <LoadingSpinner size="sm" className="mr-2" />
+                                    Sortie...
+                                </>
+                            ) : (
+                                'Confirmer'
+                            )}
                         </button>
                     </div>
                 </div>
