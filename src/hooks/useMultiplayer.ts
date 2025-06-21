@@ -1,417 +1,290 @@
-// src/hooks/useMultiplayer.ts
-// Hook pour gérer l'état multijoueur avec WebSockets temps réel
-
+// src/hooks/useMultiplayer.ts - Hook pour gérer l'état multiplayer
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-    MultiplayerGame,
-    PlayerProgress,
-    GameMastermind,
-    PlayerItem,
-    ItemType,
-    PlayerStatus,
-    MultiplayerWebSocketEvents,
-    UseMultiplayerGameReturn,
-    JoinGameRequest
-} from '@/types/multiplayer';
+import { GameRoom, GameResults, PlayerProgress, CreateRoomRequest, JoinRoomRequest } from '@/types/multiplayer';
+import { AttemptRequest, AttemptResult } from '@/types/game';
 import { multiplayerService } from '@/services/multiplayer';
-import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useAuth } from '@/contexts/AuthContext';
 
-interface WebSocketMessage {
-    type: string;
-    data: any;
-    timestamp?: number;
+interface UseMultiplayerReturn {
+    // Room state
+    currentRoom: GameRoom | null;
+    players: PlayerProgress[];
+    gameResults: GameResults | null;
+
+    // Loading states
+    loading: boolean;
+    joining: boolean;
+    starting: boolean;
+    makingAttempt: boolean;
+
+    // Error state
+    error: string | null;
+
+    // Actions
+    createRoom: (request: CreateRoomRequest) => Promise<GameRoom | null>;
+    joinRoom: (request: JoinRoomRequest) => Promise<GameRoom | null>;
+    leaveRoom: () => Promise<void>;
+    startGame: () => Promise<void>;
+    makeAttempt: (attempt: AttemptRequest) => Promise<AttemptResult | null>;
+    refreshRoom: () => Promise<void>;
+    clearError: () => void;
+
+    // Utilities
+    isHost: boolean;
+    currentPlayer: PlayerProgress | null;
+    canStart: boolean;
+    isGameActive: boolean;
+    isGameFinished: boolean;
 }
 
-export const useMultiplayer = (gameId?: string): UseMultiplayerGameReturn => {
+export const useMultiplayer = (initialRoomCode?: string): UseMultiplayerReturn => {
     const { user } = useAuth();
-    const { showSuccess, showError, showWarning, showInfo } = useNotification();
+    const { showError, showSuccess, showWarning } = useNotification();
 
-    // États principaux
-    const [multiplayerGame, setMultiplayerGame] = useState<MultiplayerGame | null>(null);
+    // State
+    const [currentRoom, setCurrentRoom] = useState<GameRoom | null>(null);
+    const [players, setPlayers] = useState<PlayerProgress[]>([]);
+    const [gameResults, setGameResults] = useState<GameResults | null>(null);
+
+    // Loading states
     const [loading, setLoading] = useState(false);
+    const [joining, setJoining] = useState(false);
+    const [starting, setStarting] = useState(false);
+    const [makingAttempt, setMakingAttempt] = useState(false);
+
+    // Error state
     const [error, setError] = useState<string | null>(null);
 
-    // WebSocket
-    const wsRef = useRef<WebSocket | null>(null);
-    const [isConnected, setIsConnected] = useState(false);
-    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const reconnectAttempts = useRef(0);
-    const maxReconnectAttempts = 5;
+    // Refs pour éviter les appels multiples
+    const isRefreshing = useRef(false);
+    const refreshInterval = useRef<NodeJS.Timeout | null>(null);
 
-    // Effets actifs (freeze time, etc.)
-    const [activeEffects, setActiveEffects] = useState<{
-        [key: string]: {
-            type: ItemType;
-            endTime: number;
-            message: string;
+    const clearError = useCallback(() => {
+        setError(null);
+    }, []);
+
+    // Auto-refresh du salon quand il est actif
+    const startAutoRefresh = useCallback(() => {
+        if (refreshInterval.current) {
+            clearInterval(refreshInterval.current);
         }
-    }>({});
 
-    // === WEBSOCKET MANAGEMENT ===
+        refreshInterval.current = setInterval(() => {
+            if (currentRoom && !isRefreshing.current) {
+                refreshRoom();
+            }
+        }, 3000); // Refresh toutes les 3 secondes
+    }, [currentRoom]);
 
-    const connectWebSocket = useCallback(() => {
-        if (!gameId || !user?.access_token) return;
+    const stopAutoRefresh = useCallback(() => {
+        if (refreshInterval.current) {
+            clearInterval(refreshInterval.current);
+            refreshInterval.current = null;
+        }
+    }, []);
+
+    // Refresh du salon
+    const refreshRoom = useCallback(async () => {
+        if (!currentRoom || isRefreshing.current) return;
 
         try {
-            const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/multiplayer/${gameId}`;
-            wsRef.current = new WebSocket(wsUrl);
+            isRefreshing.current = true;
 
-            wsRef.current.onopen = () => {
-                console.log('🔗 WebSocket connecté pour le multijoueur');
-                setIsConnected(true);
-                reconnectAttempts.current = 0;
+            // Récupérer les détails du salon
+            const roomDetails = await multiplayerService.getRoomDetails(currentRoom.room_code);
+            setCurrentRoom(roomDetails);
 
-                // Authentification
-                wsRef.current?.send(JSON.stringify({
-                    type: 'authenticate',
-                    data: { token: user.access_token }
-                }));
-            };
+            // Récupérer la progression des joueurs
+            const playerProgress = await multiplayerService.getPlayerProgress(currentRoom.room_code);
+            setPlayers(playerProgress);
 
-            wsRef.current.onmessage = (event) => {
+            // Si le jeu est terminé, récupérer les résultats
+            if (multiplayerService.isGameFinished(roomDetails) && !gameResults) {
                 try {
-                    const message: WebSocketMessage = JSON.parse(event.data);
-                    handleWebSocketMessage(message);
-                } catch (err) {
-                    console.error('❌ Erreur parsing WebSocket message:', err);
+                    const results = await multiplayerService.getGameResults(currentRoom.room_code);
+                    setGameResults(results);
+                } catch (resultsError) {
+                    console.warn('Results not yet available:', resultsError);
                 }
-            };
-
-            wsRef.current.onclose = () => {
-                console.log('🔌 WebSocket déconnecté');
-                setIsConnected(false);
-
-                // Tentative de reconnexion automatique
-                if (reconnectAttempts.current < maxReconnectAttempts) {
-                    reconnectAttempts.current++;
-                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
-
-                    reconnectTimeoutRef.current = setTimeout(() => {
-                        console.log(`🔄 Tentative de reconnexion ${reconnectAttempts.current}/${maxReconnectAttempts}`);
-                        connectWebSocket();
-                    }, delay);
-                }
-            };
-
-            wsRef.current.onerror = (error) => {
-                console.error('❌ Erreur WebSocket:', error);
-                setError('Connexion WebSocket interrompue');
-            };
-
-        } catch (err) {
-            console.error('❌ Erreur connexion WebSocket:', err);
-            setError('Impossible de se connecter au serveur');
-        }
-    }, [gameId, user?.access_token]);
-
-    const disconnectWebSocket = useCallback(() => {
-        if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-        }
-        if (wsRef.current) {
-            wsRef.current.close();
-            wsRef.current = null;
-        }
-        setIsConnected(false);
-    }, []);
-
-    // === GESTION DES MESSAGES WEBSOCKET ===
-
-    const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
-        console.log('📨 Message WebSocket reçu:', message.type, message.data);
-
-        switch (message.type) {
-            case 'authentication_success':
-                showSuccess('Connecté au multijoueur');
-                break;
-
-            case 'authentication_failed':
-                showError('Échec de l\'authentification multijoueur');
-                break;
-
-            case 'PLAYER_JOINED':
-                handlePlayerJoined(message.data);
-                break;
-
-            case 'PLAYER_LEFT':
-                handlePlayerLeft(message.data);
-                break;
-
-            case 'GAME_STARTED':
-                handleGameStarted(message.data);
-                break;
-
-            case 'PLAYER_MASTERMIND_COMPLETE':
-                handlePlayerMastermindComplete(message.data);
-                break;
-
-            case 'ITEM_USED':
-                handleItemUsed(message.data);
-                break;
-
-            case 'EFFECT_APPLIED':
-                handleEffectApplied(message.data);
-                break;
-
-            case 'PLAYER_STATUS_CHANGED':
-                handlePlayerStatusChanged(message.data);
-                break;
-
-            case 'GAME_PROGRESS_UPDATE':
-                handleGameProgressUpdate(message.data);
-                break;
-
-            case 'MULTIPLAYER_GAME_FINISHED':
-                handleGameFinished(message.data);
-                break;
-
-            case 'error':
-                showError(message.data.message || 'Erreur multijoueur');
-                break;
-
-            default:
-                console.log('🔍 Message WebSocket non géré:', message.type);
-        }
-    }, [showSuccess, showError, showWarning, showInfo]);
-
-    // === HANDLERS D'ÉVÉNEMENTS ===
-
-    const handlePlayerJoined = useCallback((data: { username: string; players_count: number }) => {
-        showInfo(`${data.username} a rejoint la partie (${data.players_count} joueurs)`);
-        refreshGame();
-    }, []);
-
-    const handlePlayerLeft = useCallback((data: { username: string; players_count: number }) => {
-        showWarning(`${data.username} a quitté la partie (${data.players_count} joueurs)`);
-        refreshGame();
-    }, []);
-
-    const handleGameStarted = useCallback((data: any) => {
-        showSuccess('La partie multijoueur a commencé !');
-        refreshGame();
-    }, []);
-
-    const handlePlayerMastermindComplete = useCallback((data: MultiplayerWebSocketEvents['PLAYER_MASTERMIND_COMPLETE']) => {
-        const isMe = data.player_id === user?.id;
-
-        if (isMe) {
-            showSuccess(`Mastermind ${data.mastermind_number} terminé ! Score: ${data.score}`);
-            if (data.items_obtained?.length > 0) {
-                showInfo(`Objets obtenus: ${data.items_obtained.map(item => item.name).join(', ')}`);
             }
-        } else {
-            showInfo(`${data.username} a terminé le mastermind ${data.mastermind_number}`);
+
+        } catch (err: any) {
+            console.error('Error refreshing room:', err);
+            // Ne pas afficher d'erreur pour les refresh automatiques
+        } finally {
+            isRefreshing.current = false;
         }
+    }, [currentRoom, gameResults]);
 
-        refreshGame();
-    }, [user?.id]);
-
-    const handleItemUsed = useCallback((data: MultiplayerWebSocketEvents['ITEM_USED']) => {
-        const isMe = data.player_id === user?.id;
-        const isTargetedAtMe = data.target_players?.includes(user?.id || '');
-
-        if (isMe) {
-            showSuccess(`Objet utilisé: ${data.item.name}`);
-        } else if (isTargetedAtMe) {
-            showWarning(`${data.username} a utilisé ${data.item.name} contre vous !`);
-        } else {
-            showInfo(`${data.username} a utilisé ${data.item.name}`);
-        }
-    }, [user?.id]);
-
-    const handleEffectApplied = useCallback((data: MultiplayerWebSocketEvents['EFFECT_APPLIED']) => {
-        const isAffected = data.affected_players.includes(user?.id || '');
-
-        if (isAffected && data.duration) {
-            // Ajouter l'effet actif
-            const effectId = `${data.effect_type}_${Date.now()}`;
-            setActiveEffects(prev => ({
-                ...prev,
-                [effectId]: {
-                    type: data.effect_type,
-                    endTime: Date.now() + ((data.duration ?? 0) * 1000),
-                    message: data.message
-                }
-            }));
-
-            // Programmer la suppression de l'effet
-            setTimeout(() => {
-                setActiveEffects(prev => {
-                    const { [effectId]: removed, ...rest } = prev;
-                    return rest;
-                });
-            }, data.duration * 1000);
-        }
-
-        showWarning(data.message);
-    }, [user?.id]);
-
-    const handlePlayerStatusChanged = useCallback((data: MultiplayerWebSocketEvents['PLAYER_STATUS_CHANGED']) => {
-        refreshGame();
-    }, []);
-
-    const handleGameProgressUpdate = useCallback((data: MultiplayerWebSocketEvents['GAME_PROGRESS_UPDATE']) => {
-        setMultiplayerGame(prev => {
-            if (!prev) return prev;
-            return {
-                ...prev,
-                current_mastermind: data.current_mastermind,
-                is_final_mastermind: data.is_final_mastermind,
-                player_progresses: data.player_progresses
-            };
-        });
-    }, []);
-
-    const handleGameFinished = useCallback((data: MultiplayerWebSocketEvents['MULTIPLAYER_GAME_FINISHED']) => {
-        const myPosition = data.final_leaderboard.find(p => p.user_id === user?.id)?.final_position;
-
-        if (myPosition === 1) {
-            showSuccess('🏆 Félicitations ! Vous avez gagné la partie !');
-        } else if (myPosition && myPosition <= 3) {
-            showSuccess(`🥉 Excellent ! Vous finissez ${myPosition}e !`);
-        } else {
-            showInfo(`Partie terminée ! Vous finissez ${myPosition}e`);
-        }
-
-        refreshGame();
-    }, [user?.id]);
-
-    // === ACTIONS PRINCIPALES ===
-
-    const joinGame = useCallback(async (request: JoinGameRequest): Promise<boolean> => {
+    // Créer un salon
+    const createRoom = useCallback(async (request: CreateRoomRequest): Promise<GameRoom | null> => {
         try {
             setLoading(true);
             setError(null);
 
-            const response = await multiplayerService.joinMultiplayerGame(request);
+            const room = await multiplayerService.createRoom(request);
+            setCurrentRoom(room);
 
-            if (response.success) {
-                setMultiplayerGame(response.game);
-                showSuccess('Partie rejointe avec succès !');
-                return true;
-            } else {
-                setError(response.message);
-                showError(response.message);
-                return false;
-            }
+            showSuccess(`🎮 Salon "${room.name}" créé avec succès !`);
+            startAutoRefresh();
+
+            return room;
         } catch (err: any) {
-            const errorMessage = err.response?.data?.detail || 'Erreur lors de la connexion';
+            const errorMessage = multiplayerService.handleMultiplayerError(err, 'createRoom');
             setError(errorMessage);
             showError(errorMessage);
-            return false;
+            return null;
         } finally {
             setLoading(false);
         }
-    }, [showSuccess, showError]);
+    }, [showError, showSuccess, startAutoRefresh]);
 
-    const leaveGame = useCallback(async (): Promise<void> => {
-        if (!gameId) return;
-
+    // Rejoindre un salon
+    const joinRoom = useCallback(async (request: JoinRoomRequest): Promise<GameRoom | null> => {
         try {
-            await multiplayerService.leaveMultiplayerGame(gameId);
-            disconnectWebSocket();
-            setMultiplayerGame(null);
-            showInfo('Partie quittée');
+            setJoining(true);
+            setError(null);
+
+            const room = await multiplayerService.joinRoom(request);
+            setCurrentRoom(room);
+
+            showSuccess(`✅ Vous avez rejoint le salon "${room.name}" !`);
+            startAutoRefresh();
+
+            return room;
         } catch (err: any) {
-            const errorMessage = err.response?.data?.detail || 'Erreur lors de la sortie';
+            const errorMessage = multiplayerService.handleMultiplayerError(err, 'joinRoom');
+            setError(errorMessage);
             showError(errorMessage);
+            return null;
+        } finally {
+            setJoining(false);
         }
-    }, [gameId, disconnectWebSocket, showInfo, showError]);
+    }, [showError, showSuccess, startAutoRefresh]);
 
-    const useItem = useCallback(async (itemType: ItemType, targetPlayers?: string[]): Promise<boolean> => {
-        if (!gameId) return false;
+    // Quitter un salon
+    const leaveRoom = useCallback(async () => {
+        if (!currentRoom) return;
 
         try {
-            const response = await multiplayerService.useItem(gameId, itemType, targetPlayers);
+            setLoading(true);
 
-            if (response.success) {
-                showSuccess(response.message);
-                // La mise à jour se fera via WebSocket
-                return true;
-            } else {
-                showError(response.message);
-                return false;
-            }
+            await multiplayerService.leaveRoom(currentRoom.room_code);
+
+            setCurrentRoom(null);
+            setPlayers([]);
+            setGameResults(null);
+            stopAutoRefresh();
+
+            showSuccess('👋 Vous avez quitté le salon');
         } catch (err: any) {
-            const errorMessage = err.response?.data?.detail || 'Erreur lors de l\'utilisation de l\'objet';
+            const errorMessage = multiplayerService.handleMultiplayerError(err, 'leaveRoom');
             showError(errorMessage);
-            return false;
+        } finally {
+            setLoading(false);
         }
-    }, [gameId, showSuccess, showError]);
+    }, [currentRoom, showError, showSuccess, stopAutoRefresh]);
 
-    const getCurrentMastermind = useCallback((): GameMastermind | null => {
-        if (!multiplayerGame) return null;
-        return multiplayerGame.masterminds.find(m => m.is_active) || null;
-    }, [multiplayerGame]);
-
-    const getPlayerProgress = useCallback((userId: string): PlayerProgress | null => {
-        if (!multiplayerGame) return null;
-        return multiplayerGame.player_progresses.find(p => p.user_id === userId) || null;
-    }, [multiplayerGame]);
-
-    const getMyProgress = useCallback((): PlayerProgress | null => {
-        if (!user?.id) return null;
-        return getPlayerProgress(user.id);
-    }, [user?.id, getPlayerProgress]);
-
-    const refreshGame = useCallback(async (): Promise<void> => {
-        if (!gameId) return;
+    // Démarrer la partie
+    const startGame = useCallback(async () => {
+        if (!currentRoom) return;
 
         try {
-            const updatedGame = await multiplayerService.getMultiplayerGame(gameId);
-            setMultiplayerGame(updatedGame);
+            setStarting(true);
+            setError(null);
+
+            await multiplayerService.startGame(currentRoom.room_code);
+
+            showSuccess('🚀 Partie démarrée !');
+
+            // Refresh immédiat pour récupérer le nouvel état
+            setTimeout(refreshRoom, 500);
         } catch (err: any) {
-            console.error('❌ Erreur refresh game:', err);
-            // Ne pas afficher d'erreur pour les refresh automatiques
+            const errorMessage = multiplayerService.handleMultiplayerError(err, 'startGame');
+            setError(errorMessage);
+            showError(errorMessage);
+        } finally {
+            setStarting(false);
         }
-    }, [gameId]);
+    }, [currentRoom, showError, showSuccess, refreshRoom]);
 
-    // === EFFETS ===
+    // Faire une tentative
+    const makeAttempt = useCallback(async (attempt: AttemptRequest): Promise<AttemptResult | null> => {
+        if (!currentRoom) return null;
 
-    // Charger la partie initiale
+        try {
+            setMakingAttempt(true);
+            setError(null);
+
+            const result = await multiplayerService.makeAttempt(currentRoom.room_code, attempt);
+
+            // Refresh immédiat pour récupérer le nouvel état
+            setTimeout(refreshRoom, 500);
+
+            return result;
+        } catch (err: any) {
+            const errorMessage = multiplayerService.handleMultiplayerError(err, 'makeAttempt');
+            setError(errorMessage);
+            showError(errorMessage);
+            return null;
+        } finally {
+            setMakingAttempt(false);
+        }
+    }, [currentRoom, showError, refreshRoom]);
+
+    // Auto-join si room code fourni
     useEffect(() => {
-        if (gameId) {
-            refreshGame();
+        if (initialRoomCode && !currentRoom && user) {
+            joinRoom({ room_code: initialRoomCode });
         }
-    }, [gameId, refreshGame]);
+    }, [initialRoomCode, currentRoom, user, joinRoom]);
 
-    // Gérer la connexion WebSocket
+    // Nettoyage à la déconnexion
     useEffect(() => {
-        if (gameId && user?.access_token) {
-            connectWebSocket();
-        }
-
         return () => {
-            disconnectWebSocket();
+            stopAutoRefresh();
         };
-    }, [gameId, user?.access_token, connectWebSocket, disconnectWebSocket]);
+    }, [stopAutoRefresh]);
 
-    // Nettoyer les effets expirés
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const now = Date.now();
-            setActiveEffects(prev => {
-                const filtered = Object.fromEntries(
-                    Object.entries(prev).filter(([_, effect]) => effect.endTime > now)
-                );
-                return filtered;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, []);
+    // Computed values
+    const isHost = currentRoom?.creator.id === user?.id;
+    const currentPlayer = players.find(p => p.user_id === user?.id) || null;
+    const canStart = isHost &&
+        currentRoom?.status === 'waiting' &&
+        currentRoom.current_players >= 2;
+    const isGameActive = currentRoom ? multiplayerService.isGameActive(currentRoom) : false;
+    const isGameFinished = currentRoom ? multiplayerService.isGameFinished(currentRoom) : false;
 
     return {
-        multiplayerGame,
+        // Room state
+        currentRoom,
+        players,
+        gameResults,
+
+        // Loading states
         loading,
+        joining,
+        starting,
+        makingAttempt,
+
+        // Error state
         error,
-        joinGame,
-        leaveGame,
-        useItem,
-        getCurrentMastermind,
-        getPlayerProgress,
-        getMyProgress,
-        refreshGame
+
+        // Actions
+        createRoom,
+        joinRoom,
+        leaveRoom,
+        startGame,
+        makeAttempt,
+        refreshRoom,
+        clearError,
+
+        // Utilities
+        isHost,
+        currentPlayer,
+        canStart,
+        isGameActive,
+        isGameFinished
     };
 };

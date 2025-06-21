@@ -1,4 +1,5 @@
 // Types pour le système multijoueur de Quantum Mastermind
+import { GameStatus, GameType, Attempt } from './game';
 
 // Énumérations de base
 export enum MultiplayerGameType {
@@ -69,13 +70,15 @@ export interface PlayerProgress {
     id: string;
     user_id: string;
     username: string;
-    status: PlayerStatus;
-    current_mastermind: number;
+    status: 'active' | 'eliminated' | 'finished' | 'disconnected' | 'spectating';
     score: number;
     attempts_count: number;
-    is_finished: boolean;
-    finish_time?: string;
-    items: PlayerItem[];
+    current_mastermind?: number[];
+    is_winner: boolean;
+    joined_at: string;
+    finished_at?: string;
+    elimination_reason?: string;
+    rank?: number;
 }
 
 export interface PlayerItem {
@@ -182,13 +185,88 @@ export interface ItemUseResponse {
 
 // Interfaces pour les statistiques
 export interface PlayerLeaderboard {
+    // Toutes les propriétés de PlayerProgress
+    id: string;
     user_id: string;
     username: string;
-    final_position: number;
-    total_score: number;
-    masterminds_completed: number;
-    total_time: number;
-    items_used: number;
+    status: 'active' | 'eliminated' | 'finished' | 'disconnected' | 'spectating';
+    score: number;
+    attempts_count: number;
+    current_mastermind?: number[];
+    is_winner: boolean;
+    joined_at: string;
+    finished_at?: string;
+    elimination_reason?: string;
+    rank?: number;
+
+    // Propriétés additionnelles pour le leaderboard
+    final_score: number;
+    attempts_made: number;
+    time_taken?: number;
+    achievements?: string[];
+    bonus_points?: number;
+    penalty_points?: number;
+}
+
+export interface GameRoom {
+    id: string;
+    room_code: string;
+    name: string;
+    game_type: GameType;
+    difficulty: Difficulty;
+    status: GameStatus;
+    max_players: number;
+    current_players: number;
+    is_private: boolean;
+    password_protected: boolean;
+    allow_spectators: boolean;
+    enable_chat: boolean;
+    quantum_enabled: boolean;
+    created_at: string;
+    started_at?: string;
+    estimated_finish?: string;
+    creator: {
+        id: string;
+        username: string;
+    };
+}
+
+export interface CreateRoomRequest {
+    name: string;
+    game_type: GameType;
+    difficulty: Difficulty;
+    max_players: number;
+    is_private: boolean;
+    password?: string;
+    allow_spectators: boolean;
+    enable_chat: boolean;
+    quantum_enabled: boolean;
+}
+export interface LobbyFilters {
+    game_type?: GameType;
+    difficulty?: Difficulty;
+    max_players?: number;
+    has_password?: boolean;
+    allow_spectators?: boolean;
+    quantum_enabled?: boolean;
+    status?: GameStatus;
+    search_term?: string;
+}
+
+export interface LobbyListResponse {
+    rooms: GameRoom[];
+    total: number;
+    page: number;
+    limit: number;
+    has_more: boolean;
+}
+
+export interface MultiplayerApiResponse<T> {
+    success: boolean;
+    data: T;
+    message?: string;
+    error?: string;
+    timestamp: string;
 }
 
 export interface GlobalStats {
@@ -212,6 +290,12 @@ export interface PlayerStatsResponse {
     }>;
     best_time: number;
     rank: number;
+}
+
+export interface JoinRoomRequest {
+    room_code: string;
+    password?: string;
+    as_spectator?: boolean;
 }
 
 // Interfaces pour les WebSockets
@@ -307,24 +391,62 @@ export interface ItemConfig {
 // Interface pour les résultats de partie
 export interface GameResults {
     game_id: string;
-    final_leaderboard: PlayerLeaderboard[];
-    game_stats: {
-        total_duration: number;
-        total_masterminds: number;
+    room_code: string;
+    game_type: GameType;
+    difficulty: Difficulty;
+    status: GameStatus;
+    started_at: string;
+    finished_at: string;
+    duration: number;
+    total_players: number;
+
+    // FIX: Utiliser PlayerProgress[] pour être compatible
+    final_leaderboard: PlayerProgress[];
+
+    // Stats et métadonnées
+    stats: {
         total_attempts: number;
-        items_used: number;
-    };
-    player_stats: {
-        [userId: string]: {
-            final_position: number;
-            total_score: number;
-            masterminds_completed: number;
-            best_time: number;
-            items_used: number;
-            favorite_item?: string;
+        average_attempts_per_player: number;
+        winner_attempts: number;
+        completion_rate: number;
+        elimination_rate: number;
+        average_time_per_attempt: number;
+        fastest_player: {
+            user_id: string;
+            username: string;
+            time: number;
+        };
+        most_efficient_player: {
+            user_id: string;
+            username: string;
+            attempts: number;
         };
     };
+
+    achievements: Array<{
+        id: string;
+        user_id: string;
+        username: string;
+        achievement_type: string;
+        title: string;
+        description: string;
+        points: number;
+        icon: string;
+        rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    }>;
+
+    solution?: number[];
+
+    metadata: {
+        total_attempts: number;
+        average_score: number;
+        fastest_completion?: number;
+        most_attempts: number;
+        elimination_count: number;
+        spectator_count: number;
+    };
 }
+
 
 // Interface pour la pagination
 export interface PaginationResponse<T> {
@@ -349,7 +471,14 @@ export type GameActionResult = {
     message: string;
     data?: any;
 };
-
+export const convertToLeaderboard = (player: PlayerProgress): PlayerLeaderboard => ({
+    ...player,
+    final_score: player.score,
+    attempts_made: player.attempts_count,
+    achievements: [],
+    bonus_points: 0,
+    penalty_points: 0
+});
 // Interface pour les hooks personnalisés
 export interface UseMultiplayerReturn {
     multiplayerGame: MultiplayerGame | null;
