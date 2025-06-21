@@ -97,18 +97,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                         </button>
                     ) : (
                         <>
-                            {selectedColor ? (
-                                <p className="text-sm text-gray-600">
-                                    <span className="inline-block w-4 h-4 rounded-full mr-2 border border-gray-400"
-                                          style={{ backgroundColor: COLOR_PALETTE[selectedColor - 1] }}></span>
-                                    Cliquez sur une position pour placer cette couleur
-                                </p>
-                            ) : (
-                                <p className="text-sm text-gray-500">
-                                    Sélectionnez une couleur puis cliquez sur une position
-                                </p>
-                            )}
-
                             {/* Indicateur de progression */}
                             <div className="mt-3">
                                 <div className="text-xs text-gray-500">

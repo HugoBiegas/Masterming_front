@@ -10,14 +10,22 @@ import { ColorSelectionModal } from '@/components/game/ColorSelectionModal';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { multiplayerService } from '@/services/multiplayer';
 import { DIFFICULTY_CONFIGS, COLOR_PALETTE } from '@/utils/constants';
 import { Difficulty } from '@/types/multiplayer';
+import { AttemptRequest } from '@/types/game';
 
-// Composant pour le plateau de jeu (utilise le vrai GameBoard du projet)
-import { GameBoard } from '@/components/game/GameBoard';
+// Interface pour les messages de chat
+interface ChatMessage {
+    id: string;
+    user_id: string;
+    username: string;
+    message: string;
+    timestamp: string;
+    type: 'user' | 'system' | 'game';
+    is_creator?: boolean;
+}
 
-// Composant AttemptHistory simplifié
+// Composant AttemptHistory simplifié pour le mode multijoueur
 const SimpleAttemptHistory: React.FC<{
     attempts: any[];
     maxAttempts: number;
@@ -55,10 +63,10 @@ const SimpleAttemptHistory: React.FC<{
 
                     <div className="flex items-center space-x-2">
                         <span className="text-xs bg-black text-white px-2 py-1 rounded">
-                            {attempt.black_pegs || 0} ⚫
+                            {attempt.exact_matches || 0} ⚫
                         </span>
                         <span className="text-xs bg-gray-400 text-white px-2 py-1 rounded">
-                            {attempt.white_pegs || 0} ⚪
+                            {attempt.position_matches || 0} ⚪
                         </span>
                     </div>
                 </div>
@@ -71,122 +79,104 @@ export const MultiplayerGame: React.FC = () => {
     const { gameId } = useParams<{ gameId: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { showSuccess, showError, showInfo, showWarning } = useNotification();
+    const { showError, showSuccess, showWarning } = useNotification();
 
+    // Hook useMultiplayer avec les bonnes propriétés
     const {
         currentRoom,
         players,
         loading,
         error,
-        isHost,
-        currentPlayer,
         isGameActive,
         isGameFinished,
+        currentPlayer,
         makeAttempt,
-        leaveRoom
+        leaveRoom,
+        refreshRoom
     } = useMultiplayer(gameId);
 
-    // États du jeu local
+    // États locaux du composant
     const [currentCombination, setCurrentCombination] = useState<number[]>([]);
     const [selectedColor, setSelectedColor] = useState<number | null>(null);
     const [attempts, setAttempts] = useState<any[]>([]);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // NOUVEAU: États pour la modal de sélection des couleurs
     const [showColorModal, setShowColorModal] = useState(false);
-    const [colorModalPosition, setColorModalPosition] = useState<number | undefined>(undefined);
-
-    // États de l'interface
     const [showChat, setShowChat] = useState(false);
-    const [showLeaderboard, setShowLeaderboard] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
-    // Chat
-    const [chatMessages, setChatMessages] = useState<any[]>([]);
+    // Configuration basée sur la difficulté de la room (fix: utiliser 'medium' pas 'MEDIUM')
+    const difficultyConfig = currentRoom ? DIFFICULTY_CONFIGS[currentRoom.difficulty as Difficulty] : DIFFICULTY_CONFIGS.medium;
 
-    // Configuration actuelle basée sur la difficulté
-    const getDifficultyConfig = () => {
-        if (!currentRoom?.difficulty) {
-            return DIFFICULTY_CONFIGS.medium;
-        }
-
-        const difficultyKey = currentRoom.difficulty.toString().toLowerCase() as Difficulty;
-        return DIFFICULTY_CONFIGS[difficultyKey] ?? DIFFICULTY_CONFIGS.medium;
-    };
-
-    const difficultyConfig = getDifficultyConfig();
-
-    // Initialisation de la combinaison
+    // Initialiser la combinaison
     useEffect(() => {
         if (currentRoom && currentCombination.length === 0) {
             setCurrentCombination(new Array(difficultyConfig.length).fill(0));
         }
-    }, [currentRoom, difficultyConfig.length, currentCombination.length]);
+    }, [currentRoom, currentCombination.length, difficultyConfig.length]);
 
-    // NOUVEAU: Gestion de la sélection de couleur via modal
-    const handlePositionClick = useCallback((position: number) => {
-        if (!multiplayerGame || multiplayerGame.base_game.status !== 'active') return;
-
-        setColorModalPosition(position);
-        setShowColorModal(true);
-    }, [multiplayerGame]);
-
-    // NOUVEAU: Gestion de la sélection depuis la modal
-    const handleColorSelect = useCallback((color: number) => {
-        if (colorModalPosition !== undefined) {
-            setCurrentCombination(prev => {
-                const newCombination = [...prev];
-                newCombination[colorModalPosition] = color;
-                return newCombination;
-            });
+    // Redirection si la partie est terminée
+    useEffect(() => {
+        if (isGameFinished) {
+            navigate(`/multiplayer/results/${gameId}`);
         }
-        setSelectedColor(color);
-    }, [colorModalPosition]);
+    }, [isGameFinished, gameId, navigate]);
 
-    // NOUVEAU: Gestion du clic sur le cercle "O" (ouverture de la modal)
-    const handleColorCircleClick = useCallback(() => {
-        if (!multiplayerGame || multiplayerGame.base_game.status !== 'active') return;
-        setColorModalPosition(undefined); // Pas de position spécifique
-        setShowColorModal(true);
-    }, [multiplayerGame]);
+    // Vérifications d'état du jeu
+    const canPlay = Boolean(
+        currentRoom &&
+        isGameActive &&
+        currentPlayer &&
+        currentPlayer.status === 'active'
+    );
 
-    // Suppression d'une couleur d'une position
+    const canSubmit = Boolean(
+        canPlay &&
+        currentCombination.length > 0 &&
+        currentCombination.every(color => color > 0) &&
+        !isSubmitting
+    );
+
+    // Gestionnaire de clic sur une position du plateau
+    const handlePositionClick = useCallback((position: number) => {
+        if (!canPlay || !selectedColor) return;
+
+        setCurrentCombination(prev => {
+            const newCombination = [...prev];
+            newCombination[position] = selectedColor;
+            return newCombination;
+        });
+    }, [canPlay, selectedColor]);
+
+    // Gestionnaire pour supprimer une couleur
     const handleRemoveColor = useCallback((position: number) => {
-        if (!multiplayerGame || multiplayerGame.base_game.status !== 'active') return;
+        if (!canPlay) return;
 
         setCurrentCombination(prev => {
             const newCombination = [...prev];
             newCombination[position] = 0;
             return newCombination;
         });
-    }, [multiplayerGame]);
+    }, [canPlay]);
 
-    // Soumission de la tentative
+    // Gestionnaire de soumission d'une tentative
     const handleSubmitAttempt = useCallback(async () => {
-        if (!currentRoom || !user) return;
-
-        const hasAllColors = currentCombination.every(color => color > 0);
-        if (!hasAllColors) {
-            showError('Veuillez sélectionner toutes les couleurs avant de soumettre');
-            return;
-        }
+        if (!canSubmit || !currentRoom || !user) return;
 
         setIsSubmitting(true);
         try {
-            showWarning('🎯 Soumission de la tentative...');
-
-            // Créer un AttemptRequest correct
-            const attemptRequest = {
-                combination: currentCombination,
-                use_quantum_hint: currentRoom.game_type === 'quantum'
+            // Fix: AttemptRequest n'a pas de mastermind_number, juste combination
+            const attemptRequest: AttemptRequest = {
+                combination: currentCombination
             };
 
             const result = await makeAttempt(attemptRequest);
 
             if (result) {
+                // Fix: utiliser is_winning au lieu de mastermind_completed
                 if (result.is_winning) {
-                    showSuccess(`🏆 Félicitations ! Vous avez trouvé la solution !`);
+                    showSuccess(`🎯 Félicitations ! Vous avez trouvé la solution !`);
                 } else if (result.game_finished) {
                     showSuccess(`🏁 Partie terminée !`);
                 } else {
@@ -197,12 +187,12 @@ export const MultiplayerGame: React.FC = () => {
                 setCurrentCombination(new Array(difficultyConfig.length).fill(0));
                 setSelectedColor(null);
 
-                // Ajouter la tentative à l'historique local
+                // Fix: utiliser les bonnes propriétés d'AttemptResult
                 setAttempts(prev => [...prev, {
-                    id: Date.now().toString(), // ID temporaire
+                    id: result.id,
                     combination: result.combination,
-                    black_pegs: result.exact_matches,
-                    white_pegs: result.position_matches,
+                    exact_matches: result.exact_matches,
+                    position_matches: result.position_matches,
                     attempt_number: prev.length + 1
                 }]);
             }
@@ -213,9 +203,9 @@ export const MultiplayerGame: React.FC = () => {
         } finally {
             setIsSubmitting(false);
         }
-    }, [currentRoom, user, currentCombination, makeAttempt, difficultyConfig.length, showError, showSuccess, showWarning]);
+    }, [currentRoom, user, currentCombination, makeAttempt, difficultyConfig.length, showError, showSuccess, canSubmit]);
 
-    // Quitter la partie
+    // Gestionnaire pour quitter la partie
     const handleLeaveGame = useCallback(async () => {
         setIsLeaving(true);
         try {
@@ -229,38 +219,70 @@ export const MultiplayerGame: React.FC = () => {
             setIsLeaving(false);
             setShowLeaveModal(false);
         }
-    }, [leaveRoom, navigate, showSuccess, showError]);
+    }, [leaveRoom, showSuccess, showError, navigate]);
 
-    // Vérifier si le joueur peut jouer
-    const canPlay = isGameActive && currentPlayer;
+    // Gestionnaire pour ouvrir la modal de sélection de couleur
+    const handleOpenColorModal = useCallback(() => {
+        setShowColorModal(true);
+    }, []);
 
-    // Vérifier si la soumission est possible
-    const canSubmit = canPlay && currentCombination.every(color => color > 0);
+    // Gestionnaire pour sélectionner une couleur
+    const handleColorSelect = useCallback((color: number) => {
+        setSelectedColor(color);
+        setShowColorModal(false);
+    }, []);
 
+    // Gestionnaire pour envoyer un message de chat
+    const handleSendMessage = useCallback((message: string) => {
+        if (!user) return;
+
+        const newMessage: ChatMessage = {
+            id: Date.now().toString(),
+            user_id: user.id,
+            username: user.username,
+            message: message,
+            timestamp: new Date().toISOString(),
+            type: 'user',
+            is_creator: currentRoom?.creator.id === user.id
+        };
+
+        setChatMessages(prev => [...prev, newMessage]);
+        // TODO: Envoyer le message via WebSocket
+    }, [user, currentRoom]);
+
+    // États de chargement
     if (loading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-                <div className="text-center">
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+                <Header />
+                <div className="flex items-center justify-center min-h-[calc(100vh-64px)]">
                     <LoadingSpinner size="lg" />
-                    <p className="mt-4 text-gray-600">Chargement du salon multijoueur...</p>
                 </div>
             </div>
         );
     }
 
+    // Gestion des erreurs
     if (error || !currentRoom) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="text-red-500 text-6xl mb-4">⚠️</div>
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur</h2>
-                    <p className="text-gray-600 mb-4">{error || 'Salon introuvable'}</p>
-                    <button
-                        onClick={() => navigate('/multiplayer/browse')}
-                        className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
-                    >
-                        Retour aux salons
-                    </button>
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+                <Header />
+                <div className="flex items-center justify-center min-h-[calc(100vh-64px)]">
+                    <div className="text-center">
+                        <div className="text-6xl mb-4">😵</div>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-2">
+                            Erreur de chargement
+                        </h1>
+                        <p className="text-gray-600 mb-4">
+                            {error || 'Impossible de charger la partie'}
+                        </p>
+                        <button
+                            onClick={() => navigate('/multiplayer/browse')}
+                            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                        >
+                            Retour au lobby
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -270,62 +292,26 @@ export const MultiplayerGame: React.FC = () => {
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
             <Header />
 
-            <div className="container mx-auto py-6 px-4">
-                {/* En-tête de la partie */}
+            <div className="container mx-auto px-4 py-6">
+                {/* Header de la partie */}
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex justify-between items-center">
                         <div>
                             <h1 className="text-2xl font-bold text-gray-800">
-                                🌐 Salon Multijoueur - {currentRoom.room_code}
+                                🎮 {currentRoom.name}
                             </h1>
                             <p className="text-gray-600">
-                                {currentRoom.name} •
+                                Code: <span className="font-mono font-medium">{currentRoom.room_code}</span> •
                                 Difficulté: {currentRoom.difficulty} •
-                                {difficultyConfig.colors} couleurs •
-                                {difficultyConfig.length} positions
+                                {currentPlayer ? (
+                                    <>Score: {currentPlayer.score} points</>
+                                ) : (
+                                    'Spectateur'
+                                )}
                             </p>
                         </div>
 
-                        <div className="flex items-center space-x-2">
-                            {/* Statut du salon */}
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                currentRoom.status === 'active' ? 'bg-green-100 text-green-800' :
-                                    currentRoom.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' :
-                                        'bg-gray-100 text-gray-800'
-                            }`}>
-                                {multiplayerService.getRoomStatusIcon(currentRoom)} {multiplayerService.getRoomStatusText(currentRoom)}
-                            </span>
-
-                            {/* Statut du joueur */}
-                            {currentPlayer && (
-                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                    isGameActive ? 'bg-blue-100 text-blue-800' :
-                                        isGameFinished ? 'bg-purple-100 text-purple-800' :
-                                            'bg-gray-100 text-gray-800'
-                                }`}>
-                                    {isGameActive ? '🎯 En jeu' :
-                                        isGameFinished ? '🏁 Terminé' :
-                                            '⏳ En attente'}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between">
-                        <div className="text-sm text-gray-600">
-                            👥 {currentRoom.current_players}/{currentRoom.max_players} joueurs
-                        </div>
-
-                        <div className="flex space-x-2">
-                            <button
-                                onClick={() => setShowLeaderboard(true)}
-                                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center"
-                            >
-                                🏆 Classement
-                            </button>
-
-                            {/* Chat */}
+                        <div className="flex space-x-3">
                             <button
                                 onClick={() => setShowChat(!showChat)}
                                 className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center"
@@ -360,45 +346,30 @@ export const MultiplayerGame: React.FC = () => {
                                 isActive={canPlay}
                                 canSubmit={canSubmit}
                             />
+
+                            {/* Bouton de sélection des couleurs */}
+                            {canPlay && (
+                                <div className="mt-4 text-center">
+                                    <button
+                                        onClick={handleOpenColorModal}
+                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                                    >
+                                        🎨 Choisir une couleur
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Historique des tentatives - Simple pour multijoueur */}
+                        {/* Historique des tentatives */}
                         <div className="bg-white rounded-lg shadow-lg p-6">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4">
                                 📊 Vos tentatives
                             </h3>
-                            {attempts.length === 0 ? (
-                                <div className="text-center py-8 text-gray-500">
-                                    <div className="text-4xl mb-2">🎯</div>
-                                    <p>Aucune tentative pour le moment</p>
-                                    <p className="text-sm">Faites votre première proposition !</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {attempts.map((attempt, index) => (
-                                        <div key={attempt.id || index} className="flex items-center space-x-4 p-2 bg-gray-50 rounded">
-                                            <span className="text-sm font-medium w-8">#{index + 1}</span>
-                                            <div className="flex space-x-1">
-                                                {attempt.combination?.map((color: number, pos: number) => (
-                                                    <div
-                                                        key={pos}
-                                                        className="w-6 h-6 rounded-full border border-gray-300"
-                                                        style={{ backgroundColor: '#ff0000' }} // Couleur placeholder
-                                                    />
-                                                ))}
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <span className="text-xs bg-black text-white px-2 py-1 rounded">
-                                                    {attempt.black_pegs || 0} ⚫
-                                                </span>
-                                                <span className="text-xs bg-gray-400 text-white px-2 py-1 rounded">
-                                                    {attempt.white_pegs || 0} ⚪
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            <SimpleAttemptHistory
+                                attempts={attempts}
+                                maxAttempts={difficultyConfig.attempts}
+                                combinationLength={difficultyConfig.length}
+                            />
                         </div>
                     </div>
 
@@ -423,81 +394,55 @@ export const MultiplayerGame: React.FC = () => {
                             <div className="bg-white rounded-lg shadow-lg">
                                 <ChatBox
                                     messages={chatMessages}
-                                    onSendMessage={(message) => {
-                                        // TODO: Implémenter l'envoi de message
-                                        console.log('Envoi message:', message);
-                                    }}
+                                    onSendMessage={handleSendMessage}
                                 />
                             </div>
                         )}
                     </div>
                 </div>
-            </div>
 
-            {/* NOUVEAU: Modal de sélection des couleurs */}
-            <ColorSelectionModal
-                isOpen={showColorModal}
-                onClose={() => setShowColorModal(false)}
-                onColorSelect={handleColorSelect}
-                availableColors={difficultyConfig.colors}
-                selectedColor={selectedColor}
-                position={colorModalPosition}
-            />
-
-            {/* Modal du classement */}
-            <Modal
-                isOpen={showLeaderboard}
-                onClose={() => setShowLeaderboard(false)}
-                title="🏆 Classement"
-            >
-                <div className="p-6">
-                    <PlayersList
-                        players={[...players].sort((a, b) => (b.score || 0) - (a.score || 0))}
-                        currentUserId={user?.id}
-                        creatorId={currentRoom?.creator.id || ''}
-                        showProgress={true}
-                        showItems={false}
+                {/* Modal de sélection des couleurs */}
+                {showColorModal && (
+                    <ColorSelectionModal
+                        isOpen={showColorModal}
+                        onClose={() => setShowColorModal(false)}
+                        selectedColor={selectedColor}
+                        availableColors={difficultyConfig.colors}
+                        onColorSelect={handleColorSelect}
                     />
-                </div>
-            </Modal>
+                )}
 
-            {/* Modal de confirmation de sortie */}
-            <Modal
-                isOpen={showLeaveModal}
-                onClose={() => setShowLeaveModal(false)}
-                title="🚪 Quitter le salon"
-            >
-                <div className="p-6">
-                    <p className="text-gray-600 mb-4">
-                        Êtes-vous sûr de vouloir quitter ce salon multijoueur ?
-                    </p>
-                    <p className="text-sm text-red-600 mb-6">
-                        ⚠️ Votre progression sera perdue et vous ne pourrez pas rejoindre ce salon.
-                    </p>
-                    <div className="flex space-x-3">
-                        <button
-                            onClick={() => setShowLeaveModal(false)}
-                            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                        >
-                            Annuler
-                        </button>
-                        <button
-                            onClick={handleLeaveGame}
-                            disabled={isLeaving}
-                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center justify-center"
-                        >
-                            {isLeaving ? (
-                                <>
-                                    <LoadingSpinner size="sm" className="mr-2" />
-                                    Sortie...
-                                </>
-                            ) : (
-                                'Confirmer'
-                            )}
-                        </button>
-                    </div>
-                </div>
-            </Modal>
+                {/* Modal de confirmation pour quitter */}
+                {showLeaveModal && (
+                    <Modal
+                        isOpen={showLeaveModal}
+                        onClose={() => setShowLeaveModal(false)}
+                        title="Quitter la partie"
+                    >
+                        <div className="text-center">
+                            <div className="text-6xl mb-4">🚪</div>
+                            <p className="text-gray-600 mb-6">
+                                Êtes-vous sûr de vouloir quitter cette partie multijoueur ?
+                            </p>
+                            <div className="flex justify-center space-x-4">
+                                <button
+                                    onClick={() => setShowLeaveModal(false)}
+                                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={handleLeaveGame}
+                                    disabled={isLeaving}
+                                    className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+                                >
+                                    {isLeaving ? 'Sortie...' : 'Quitter'}
+                                </button>
+                            </div>
+                        </div>
+                    </Modal>
+                )}
+            </div>
         </div>
     );
 };
