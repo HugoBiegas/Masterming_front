@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { multiplayerService } from '@/services/multiplayer';
 
 export const MultiplayerLobby: React.FC = () => {
-    const { gameId } = useParams<{ gameId: string }>();
+    const { roomCode } = useParams<{ roomCode: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
     const { showSuccess, showError, showWarning } = useNotification();
@@ -28,7 +28,7 @@ export const MultiplayerLobby: React.FC = () => {
         startGame,
         leaveRoom,
         refreshRoom
-    } = useMultiplayer(gameId);
+    } = useMultiplayer(roomCode);
 
     const [isStarting, setIsStarting] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
@@ -38,9 +38,9 @@ export const MultiplayerLobby: React.FC = () => {
     // Redirection si la partie a commencé
     useEffect(() => {
         if (isGameActive) {
-            navigate(`/multiplayer/rooms/${gameId}`);
+            navigate(`/multiplayer/rooms/${roomCode}`);
         }
-    }, [isGameActive, gameId, navigate]);
+    }, [isGameActive, roomCode, navigate]);
 
     // Démarrer la partie
     const handleStartGame = async () => {

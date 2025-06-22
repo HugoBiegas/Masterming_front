@@ -40,20 +40,20 @@ interface UseMultiplayerReturn {
 
 export const useMultiplayer = (initialRoomCode?: string): UseMultiplayerReturn => {
     const { user } = useAuth();
-    const { showError, showSuccess, showWarning } = useNotification();
+    const { showError, showSuccess } = useNotification();
 
-    // State
+    // États du hook
     const [currentRoom, setCurrentRoom] = useState<GameRoom | null>(null);
     const [players, setPlayers] = useState<PlayerProgress[]>([]);
     const [gameResults, setGameResults] = useState<GameResults | null>(null);
 
-    // Loading states
+    // États de chargement
     const [loading, setLoading] = useState(false);
     const [joining, setJoining] = useState(false);
     const [starting, setStarting] = useState(false);
     const [makingAttempt, setMakingAttempt] = useState(false);
 
-    // Error state
+    // État d'erreur
     const [error, setError] = useState<string | null>(null);
 
     // Refs pour éviter les appels multiples
@@ -64,58 +64,54 @@ export const useMultiplayer = (initialRoomCode?: string): UseMultiplayerReturn =
         setError(null);
     }, []);
 
-    // Auto-refresh du salon quand il est actif
-    const startAutoRefresh = useCallback(() => {
-        if (refreshInterval.current) {
-            clearInterval(refreshInterval.current);
-        }
-
-        refreshInterval.current = setInterval(() => {
-            if (currentRoom && !isRefreshing.current) {
-                refreshRoom();
-            }
-        }, 3000); // Refresh toutes les 3 secondes
-    }, [currentRoom]);
 
     const stopAutoRefresh = useCallback(() => {
-        if (refreshInterval.current) {
-            clearInterval(refreshInterval.current);
-            refreshInterval.current = null;
+        if (autoRefreshIntervalRef.current) {
+            clearInterval(autoRefreshIntervalRef.current);
+            autoRefreshIntervalRef.current = null;
         }
     }, []);
 
     // Refresh du salon
     const refreshRoom = useCallback(async () => {
-        if (!currentRoom || isRefreshing.current) return;
+        if (!initialRoomCode || !user) return;
 
         try {
-            isRefreshing.current = true;
+            setLoading(true);
+            setError(null);
 
-            // Récupérer les détails du salon
-            const roomDetails = await multiplayerService.getRoomDetails(currentRoom.room_code);
-            setCurrentRoom(roomDetails);
+            // CORRECTION: Utiliser getRoomDetails avec roomCode
+            const roomData = await multiplayerService.getRoomDetails(initialRoomCode);
+            setCurrentRoom(roomData);
 
-            // Récupérer la progression des joueurs
-            const playerProgress = await multiplayerService.getPlayerProgress(currentRoom.room_code);
-            setPlayers(playerProgress);
-
-            // Si le jeu est terminé, récupérer les résultats
-            if (multiplayerService.isGameFinished(roomDetails) && !gameResults) {
-                try {
-                    const results = await multiplayerService.getGameResults(currentRoom.room_code);
-                    setGameResults(results);
-                } catch (resultsError) {
-                    console.warn('Results not yet available:', resultsError);
-                }
+            // Récupérer les joueurs
+            try {
+                const playersData = await multiplayerService.getPlayerProgress(initialRoomCode);
+                setPlayers(playersData);
+            } catch (playersError) {
+                console.warn('Impossible de récupérer les joueurs:', playersError);
+                setPlayers([]);
             }
 
         } catch (err: any) {
-            console.error('Error refreshing room:', err);
-            // Ne pas afficher d'erreur pour les refresh automatiques
+            const errorMessage = multiplayerService.handleMultiplayerError(err, 'refreshRoom');
+            setError(errorMessage);
+            console.error('Erreur refresh room:', err);
         } finally {
-            isRefreshing.current = false;
+            setLoading(false);
         }
-    }, [currentRoom, gameResults]);
+    }, [initialRoomCode, user]);
+
+    // Auto-refresh du salon quand il est actif
+    const startAutoRefresh = useCallback(() => {
+        // Refresh initial
+        refreshRoom();
+
+        // Refresh périodique toutes les 3 secondes
+        autoRefreshIntervalRef.current = setInterval(refreshRoom, 3000);
+    }, [refreshRoom]);
+
+    const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Créer un salon
     const createRoom = useCallback(async (request: CreateRoomRequest): Promise<GameRoom | null> => {
@@ -126,7 +122,7 @@ export const useMultiplayer = (initialRoomCode?: string): UseMultiplayerReturn =
             const room = await multiplayerService.createRoom(request);
             setCurrentRoom(room);
 
-            showSuccess(`🎮 Salon "${room.name}" créé avec succès !`);
+            showSuccess(`✅ Salon "${room.name}" créé avec succès !`);
             startAutoRefresh();
 
             return room;
@@ -236,9 +232,11 @@ export const useMultiplayer = (initialRoomCode?: string): UseMultiplayerReturn =
     // Auto-join si room code fourni
     useEffect(() => {
         if (initialRoomCode && !currentRoom && user) {
-            joinRoom({ room_code: initialRoomCode });
+            // Si on a un roomCode, rejoindre automatiquement ou récupérer les détails
+            refreshRoom();
+            startAutoRefresh();
         }
-    }, [initialRoomCode, currentRoom, user, joinRoom]);
+    }, [initialRoomCode, currentRoom, user, refreshRoom, startAutoRefresh]);
 
     // Nettoyage à la déconnexion
     useEffect(() => {

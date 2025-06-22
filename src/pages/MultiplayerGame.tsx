@@ -76,7 +76,7 @@ const SimpleAttemptHistory: React.FC<{
 };
 
 export const MultiplayerGame: React.FC = () => {
-    const { gameId } = useParams<{ gameId: string }>();
+    const { roomCode } = useParams<{ roomCode: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
     const { showError, showSuccess, showWarning } = useNotification();
@@ -93,7 +93,7 @@ export const MultiplayerGame: React.FC = () => {
         makeAttempt,
         leaveRoom,
         refreshRoom
-    } = useMultiplayer(gameId);
+    } = useMultiplayer(roomCode);
 
     // États locaux du composant
     const [currentCombination, setCurrentCombination] = useState<number[]>([]);
@@ -119,9 +119,9 @@ export const MultiplayerGame: React.FC = () => {
     // Redirection si la partie est terminée
     useEffect(() => {
         if (isGameFinished) {
-            navigate(`/multiplayer/rooms/${gameId}/results`);
+            navigate(`/multiplayer/rooms/${roomCode}/results`);
         }
-    }, [isGameFinished, gameId, navigate]);
+    }, [isGameFinished, roomCode, navigate]);
 
     // Vérifications d'état du jeu
     const canPlay = Boolean(

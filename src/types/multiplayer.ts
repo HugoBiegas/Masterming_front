@@ -236,16 +236,47 @@ export interface GameRoom {
 
 export interface CreateRoomRequest {
     name: string;
-    game_type: MultiplayerGameType;
+    game_type: GameType;
     difficulty: Difficulty;
     max_players: number;
-    is_private: boolean;
+
+    // AJOUT: Propriétés manquantes pour la configuration du jeu
+    combination_length: number;
+    available_colors: number;
+    max_attempts: number;
+    total_masterminds: number;
+
+    // AJOUT: Propriétés pour les fonctionnalités
+    quantum_enabled: boolean;
+    items_enabled: boolean;
+    items_per_mastermind: number;
+
+    // AJOUT: Propriétés de visibilité et accès
+    is_public: boolean;
     password?: string;
     allow_spectators: boolean;
     enable_chat: boolean;
-    quantum_enabled: boolean;
-    total_masterminds: number; // AJOUTÉ: Champ manquant pour le nombre de masterminds
-    items_enabled?: boolean; // AJOUTÉ: Champ pour les objets bonus/malus
+
+    // AJOUT: Solution personnalisée (optionnelle)
+    solution?: number[];
+}
+
+export interface MultiplayerResultsProps {
+    isOpen: boolean;
+    onClose: () => void;
+    gameResults: GameResults | null;
+    currentUserId: string;
+    showDetailedStats?: boolean;
+}
+export interface MultiplayerResultsPageProps {
+    gameResults: GameResults;
+    currentUserId?: string;
+    showDetailedStats?: boolean;
+}
+
+export interface EnhancedCreateRoomRequest extends CreateRoomRequest {
+    base_game_type: GameType; // Type de partie de base
+    is_private: boolean; // Alias pour !is_public
 }
 
 export interface LobbyFilters {
@@ -485,6 +516,25 @@ export const convertToLeaderboard = (player: PlayerProgress): PlayerLeaderboard 
     achievements: [],
     bonus_points: 0,
     penalty_points: 0
+});
+
+export const convertToCreateRoomRequest = (enhanced: EnhancedCreateRoomRequest): CreateRoomRequest => ({
+    name: enhanced.name,
+    game_type: enhanced.game_type,
+    difficulty: enhanced.difficulty,
+    max_players: enhanced.max_players,
+    combination_length: enhanced.combination_length,
+    available_colors: enhanced.available_colors,
+    max_attempts: enhanced.max_attempts,
+    total_masterminds: enhanced.total_masterminds,
+    quantum_enabled: enhanced.quantum_enabled,
+    items_enabled: enhanced.items_enabled,
+    items_per_mastermind: enhanced.items_per_mastermind,
+    is_public: !enhanced.is_private, // Conversion
+    password: enhanced.password?.trim() || undefined,
+    allow_spectators: enhanced.allow_spectators,
+    enable_chat: enhanced.enable_chat,
+    solution: enhanced.solution?.length ? enhanced.solution : undefined
 });
 
 // Interface pour les hooks personnalisés

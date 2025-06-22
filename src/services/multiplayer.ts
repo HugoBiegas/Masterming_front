@@ -10,35 +10,65 @@ import {
     LobbyListResponse,
     MultiplayerApiResponse
 } from '@/types/multiplayer';
-import {AttemptRequest, AttemptResult, GameType} from '@/types/game';
+import {AttemptRequest, AttemptResult, Difficulty, GameType} from '@/types/game';
 
 export class MultiplayerService {
     // ========== ROOM MANAGEMENT ==========
 
-    async createRoom(request: {
-        name: string;
-        game_type: GameType;
-        difficulty: Difficulty;
-        max_players: number;
-        is_private: boolean;
-        password: string;
-        allow_spectators: boolean;
-        enable_chat: boolean;
-        quantum_enabled: boolean;
-        total_masterminds: number;
-        items_enabled: boolean
-    }): Promise<GameRoom> {
+    async createRoom(request: CreateRoomRequest): Promise<GameRoom> {
         console.log('🌐 Creating multiplayer room:', request);
 
+        try {
+            // Quitter toutes les parties actives avant de créer
+            await multiplayerService.leaveAllActiveGames();
+        } catch (leaveError) {
+            console.warn('Pas de parties actives à quitter:', leaveError);
+            // Ne pas bloquer la création pour cette erreur
+        }
+
+        // CORRECTION: Utiliser directement CreateRoomRequest qui contient maintenant tous les champs
         const response = await apiService.post<MultiplayerApiResponse<GameRoom>>(
             '/api/v1/multiplayer/rooms/create',
-            request
+            {
+                // Configuration de base
+                game_type: request.game_type,
+                difficulty: request.difficulty,
+                max_players: request.max_players,
+
+                // Configuration du mastermind
+                combination_length: request.combination_length,
+                available_colors: request.available_colors,
+                max_attempts: request.max_attempts,
+
+                // Configuration multijoueur
+                total_masterminds: request.total_masterminds,
+
+                // Options avancées
+                quantum_enabled: request.quantum_enabled,
+                items_enabled: request.items_enabled,
+                items_per_mastermind: request.items_per_mastermind,
+
+                // Visibilité
+                is_public: request.is_public,
+                password: request.password,
+
+                // Solution personnalisée (optionnelle)
+                solution: request.solution
+            }
         );
         return response.data.data;
     }
 
     async joinRoom(request: JoinRoomRequest): Promise<GameRoom> {
-        console.log('🌐 Joining room:', request.room_code);
+        console.log('🌐 Joining room:', request);
+
+        try {
+            // Quitter toutes les parties actives avant de rejoindre
+            await multiplayerService.leaveAllActiveGames();
+        } catch (leaveError) {
+            console.warn('Pas de parties actives à quitter:', leaveError);
+            // Ne pas bloquer le join pour cette erreur
+        }
 
         const response = await apiService.post<MultiplayerApiResponse<GameRoom>>(
             `/api/v1/multiplayer/rooms/${request.room_code}/join`,
@@ -50,10 +80,39 @@ export class MultiplayerService {
         return response.data.data;
     }
 
+    async joinByCode(roomCode: string, password?: string): Promise<GameRoom> {
+        console.log('🌐 Joining by room code:', roomCode);
+
+        try {
+            // Quitter toutes les parties actives avant de rejoindre
+            await multiplayerService.leaveAllActiveGames();
+        } catch (leaveError) {
+            console.warn('Pas de parties actives à quitter:', leaveError);
+            // Ne pas bloquer le join pour cette erreur
+        }
+
+        const response = await apiService.post<MultiplayerApiResponse<GameRoom>>(
+            `/api/v1/multiplayer/rooms/${roomCode}/join`,
+            {
+                password: password || null,
+                as_spectator: false
+            }
+        );
+        return response.data.data;
+    }
+
     async leaveRoom(roomCode: string): Promise<void> {
         console.log('🌐 Leaving room:', roomCode);
         await apiService.post(`/api/v1/multiplayer/rooms/${roomCode}/leave`);
     }
+
+    async leaveAllActiveGames(): Promise<void> {
+        console.log('🌐 Leaving all active games for multiplayer');
+        // Déléguer au gameService qui a déjà cette fonctionnalité
+        const { gameService } = await import('./game');
+        await gameService.leaveAllActiveGames();
+    }
+
 
     async getRoomDetails(roomCode: string): Promise<GameRoom> {
         console.log('🌐 Getting room details:', roomCode);
@@ -169,12 +228,11 @@ export class MultiplayerService {
     }
 
     isGameFinished(room: GameRoom): boolean {
-        return room.status === 'finished' || room.status === 'cancelled';
+        return room.status === 'finished';
     }
 
     canJoinRoom(room: GameRoom): boolean {
-        return room.status === 'waiting' &&
-            room.current_players < room.max_players;
+        return room.status === 'waiting' && room.current_players < room.max_players;
     }
 
     isRoomFull(room: GameRoom): boolean {
@@ -208,85 +266,41 @@ export class MultiplayerService {
     // ========== ERROR HANDLING ==========
 
     handleMultiplayerError(error: any, context: string): string {
-        console.error(`Multiplayer error in ${context}:`, error);
+        console.error(`❌ Erreur ${context}:`, error);
 
+        // Erreur de réseau
         if (!error.response) {
-            return 'Erreur de connexion réseau';
+            return 'Erreur de connexion. Vérifiez votre connexion internet.';
         }
 
-        const status = error.response.status;
-        const data = error.response.data;
-
-        // ✅ CORRECTION: Gestion spécifique des erreurs de validation (422)
-        if (status === 422) {
-            if (data.detail && Array.isArray(data.detail)) {
-                // Erreurs de validation Pydantic - extraire les messages
-                const validationErrors = data.detail.map((error: any) => {
-                    if (typeof error === 'string') {
-                        return error;
-                    }
-                    if (error.msg) {
-                        const location = error.loc ? error.loc.join('.') : 'champ';
-                        return `${location}: ${error.msg}`;
-                    }
-                    return 'Erreur de validation';
-                }).join(', ');
-
-                return `Erreur de validation: ${validationErrors}`;
-            } else if (typeof data.detail === 'string') {
-                return data.detail;
-            } else {
-                return 'Données invalides';
-            }
-        }
-
-        // ✅ CORRECTION: Extraction sécurisée du message d'erreur
-        let detail = '';
-        if (typeof data.detail === 'string') {
-            detail = data.detail;
-        } else if (typeof data.message === 'string') {
-            detail = data.message;
-        } else if (data.detail && typeof data.detail === 'object') {
-            // Si detail est un objet, essayer d'extraire un message
-            detail = data.detail.message || data.detail.msg || JSON.stringify(data.detail);
-        }
+        const { status, data } = error.response;
 
         switch (status) {
             case 400:
-                if (detail?.includes('room')) {
-                    return 'Données de salon invalides';
-                }
-                return detail || 'Requête invalide';
-
+                return data?.detail || 'Données invalides';
             case 401:
-                return 'Session expirée. Reconnectez-vous';
-
+                return 'Session expirée. Reconnectez-vous.';
             case 403:
-                return 'Accès refusé à ce salon';
-
+                return 'Accès refusé. Vérifiez vos permissions.';
             case 404:
-                return 'Salon non trouvé';
-
+                return 'Partie non trouvée ou inexistante';
             case 409:
-                if (detail?.includes('full')) {
-                    return 'Le salon est complet';
+                if (context === 'joinRoom') {
+                    return 'Partie déjà pleine ou vous êtes déjà dans une autre partie';
                 }
-                if (detail?.includes('started')) {
-                    return 'La partie a déjà commencé';
+                return 'Conflit - operation impossible';
+            case 422:
+                if (data?.detail && Array.isArray(data.detail)) {
+                    const validationErrors = data.detail.map((error: any) => {
+                        return error.msg || String(error);
+                    }).join(', ');
+                    return `Erreur de validation: ${validationErrors}`;
                 }
-                if (detail?.includes('password')) {
-                    return 'Mot de passe incorrect';
-                }
-                return detail || 'Conflit';
-
-            case 429:
-                return 'Trop de requêtes. Patientez un moment';
-
+                return data?.detail || 'Données de requête invalides';
             case 500:
-                return 'Erreur serveur. Réessayez plus tard';
-
+                return 'Erreur serveur. Réessayez dans quelques instants.';
             default:
-                return detail || 'Erreur inattendue';
+                return data?.detail || `Erreur ${status}`;
         }
     }
 

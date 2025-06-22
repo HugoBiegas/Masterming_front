@@ -116,26 +116,31 @@ export const MultiplayerBrowse: React.FC = () => {
     const handleJoinRoom = async () => {
         if (!selectedRoom) return;
 
-        if (selectedRoom.is_private && !password.trim()) {
-            showError('Mot de passe requis pour ce salon privé');
-            return;
-        }
-
         setIsJoining(true);
         try {
-            const request: JoinRoomRequest = {
-                room_code: selectedRoom.room_code,
-                password: selectedRoom.is_private ? password : undefined
-            };
-
-            const room = await multiplayerService.joinRoom(request);
-            if (room) {
-                showSuccess('Salon rejoint avec succès !');
-                navigate(`/multiplayer/lobby/${room.id}`);
+            // NOUVEAU: Quitter toutes les parties actives avant de rejoindre
+            try {
+                await multiplayerService.leaveAllActiveGames();
+                showSuccess('✅ Parties précédentes quittées');
+            } catch (leaveError) {
+                console.warn('Aucune partie active à quitter:', leaveError);
+                // Ce n'est pas bloquant, on continue
             }
+
+            await multiplayerService.joinRoom({
+                room_code: selectedRoom.room_code,
+                password: password.trim() || undefined
+            });
+
+            showSuccess(`✅ Vous avez rejoint "${selectedRoom.name}" !`);
+
+            // CORRECTION: Navigation vers la route lobby avec roomCode
+            navigate(`/multiplayer/rooms/${selectedRoom.room_code}/lobby`);
+
         } catch (error: any) {
-            console.error('Erreur rejoindre salon:', error);
-            showError(error.message || 'Impossible de rejoindre le salon');
+            console.error('Erreur:', error);
+            const message = multiplayerService.handleMultiplayerError(error, 'joinRoom');
+            showError(message);
         } finally {
             setIsJoining(false);
             setShowJoinModal(false);
@@ -145,31 +150,34 @@ export const MultiplayerBrowse: React.FC = () => {
 
     // Rejoindre par code de salon
     const handleJoinByCode = async () => {
-        if (!roomCode.trim()) {
-            showError('Veuillez entrer un code de salon');
-            return;
-        }
+        if (!roomCode.trim()) return;
 
         setIsSearchingByCode(true);
         try {
-            const request: JoinRoomRequest = {
-                room_code: roomCode.trim(),
-                password: password || undefined
-            };
-
-            const room = await multiplayerService.joinRoom(request);
-            if (room) {
-                showSuccess('Salon rejoint avec succès !');
-                navigate(`/multiplayer/lobby/${room.id}`);
+            // NOUVEAU: Quitter toutes les parties actives avant de rejoindre
+            try {
+                await multiplayerService.leaveAllActiveGames();
+                showSuccess('✅ Parties précédentes quittées');
+            } catch (leaveError) {
+                console.warn('Aucune partie active à quitter:', leaveError);
+                // Ce n'est pas bloquant, on continue
             }
+
+            const room = await multiplayerService.joinByCode(roomCode.trim());
+
+            showSuccess(`✅ Partie "${room.name}" rejointe !`);
+
+            // CORRECTION: Navigation vers la route lobby avec roomCode
+            navigate(`/multiplayer/rooms/${room.room_code}/lobby`);
+
         } catch (error: any) {
-            console.error('Erreur recherche par code:', error);
-            showError('Code de salon invalide ou salon introuvable');
+            console.error('Erreur:', error);
+            const message = multiplayerService.handleMultiplayerError(error, 'joinByCode');
+            showError(message);
         } finally {
             setIsSearchingByCode(false);
             setShowCodeModal(false);
             setRoomCode('');
-            setPassword('');
         }
     };
 

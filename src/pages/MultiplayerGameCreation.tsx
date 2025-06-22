@@ -1,118 +1,97 @@
-import React, { useState } from 'react';
+import React, {useCallback, useState} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useNotification } from '@/contexts/NotificationContext';
 import { multiplayerService } from '@/services/multiplayer';
 import {
-    Difficulty
+    Difficulty,
+    EnhancedCreateRoomRequest,
+    convertToCreateRoomRequest
 } from '@/types/multiplayer';
 import { GameType } from '@/types/game';
 import { DIFFICULTY_CONFIGS, GAME_TYPE_INFO } from '@/utils/constants';
 
-// Interface étendue pour inclure les types de partie du solo et le nombre de masterminds
-interface EnhancedCreateRoomRequest {
-    name: string;
-    game_type: GameType;
-    base_game_type: GameType; // Type de partie comme dans le solo
-    difficulty: Difficulty;
-    max_players: number;
-    is_private: boolean;
-    password: string;
-    allow_spectators: boolean;
-    enable_chat: boolean;
-    quantum_enabled: boolean; // Support quantique
-    total_masterminds: number; // NOUVEAU: Nombre de masterminds
-    items_enabled: boolean; // NOUVEAU: Objets bonus/malus
-}
-
 export const MultiplayerGameCreation: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { showSuccess, showError } = useNotification();
+    const { showSuccess, showError, showWarning } = useNotification();
 
     // Détection du mode rapide depuis la navigation
     const quickMode = location.state?.quickMode === true;
 
+    // CORRECTION: Utiliser EnhancedCreateRoomRequest avec toutes les propriétés
     const [formData, setFormData] = useState<EnhancedCreateRoomRequest>({
         name: quickMode ? 'Partie Rapide' : 'Ma Partie',
-        game_type: GameType.CLASSIC, // NOUVEAU: Type de partie comme dans le solo
-        base_game_type: GameType.CLASSIC, // NOUVEAU: Type de partie comme dans le solo
+        game_type: GameType.CLASSIC,
+        base_game_type: GameType.CLASSIC,
         difficulty: Difficulty.MEDIUM,
-        max_players: quickMode ? 4 : 6,
+        max_players: quickMode ? 4 : 2,
+
+        // AJOUT: Propriétés manquantes avec valeurs par défaut
+        combination_length: 4,
+        available_colors: 6,
+        max_attempts: 10,
+        total_masterminds: 3,
+        quantum_enabled: false,
+        items_enabled: true,
+        items_per_mastermind: 1,
+        is_public: true,
         is_private: false,
         password: '',
-        allow_spectators: false,
+        allow_spectators: true,
         enable_chat: true,
-        quantum_enabled: false, // NOUVEAU: Support quantique
-        total_masterminds: 3, // NOUVEAU: Nombre de masterminds par défaut
-        items_enabled: true // NOUVEAU: Objets bonus/malus activés par défaut
+        solution: undefined
     });
 
     const [isCreating, setIsCreating] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(!quickMode);
-    const handleInputChange = (field: keyof EnhancedCreateRoomRequest, value: any) => {
-        setFormData(prev => {
-            const newData = { ...prev, [field]: value };
 
-            // Logique automatique pour le mode quantique
-            if (field === 'base_game_type' && value === GameType.QUANTUM) {
-                newData.quantum_enabled = true;
-                newData.difficulty = Difficulty.EXPERT; // Quantique suggère expert
-            } else if (field === 'base_game_type' && value !== GameType.QUANTUM) {
-                newData.quantum_enabled = false;
-            }
+    const handleInputChange = useCallback((field: keyof EnhancedCreateRoomRequest, value: any) => {
+        setFormData(prev => ({
+            ...prev,
+            [field]: value,
+            ...(field === 'is_private' && { is_public: !value }),
+            ...(field === 'is_public' && { is_private: !value })
+        }));
+    }, []);
 
-            return newData;
-        });
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (formData.is_private && !formData.password?.trim()) {
-            showError('Un mot de passe est requis pour les parties privées');
-            return;
-        }
-
-        // Mode rapidité : validation du temps limite
-        if (formData.base_game_type === GameType.SPEED && !formData.max_players) {
-            showError('Le nombre de joueurs est requis pour le mode rapidité');
-            return;
-        }
+        if (isCreating) return;
 
         setIsCreating(true);
-
         try {
-            const requestData = {
-                name: formData.name,
-                game_type: formData.base_game_type, // CORRECTION: Mapper vers MultiplayerGameType
-                difficulty: formData.difficulty,
-                max_players: formData.max_players,
-                is_private: formData.is_private,
-                password: formData.password || "", // Assurer que ce n'est jamais undefined
-                allow_spectators: formData.allow_spectators,
-                enable_chat: formData.enable_chat,
-                quantum_enabled: formData.quantum_enabled,
-                total_masterminds: formData.total_masterminds, // NOUVEAU: Inclure le nombre de masterminds
-                items_enabled: formData.items_enabled || true // NOUVEAU: Inclure les objets
-            };
+            console.log('🎯 Données de création:', formData);
 
-            console.log('🌐 Creating multiplayer room with data:', requestData);
+            // Quitter toutes les parties actives avant de créer une nouvelle
+            try {
+                await multiplayerService.leaveAllActiveGames();
+                showSuccess('✅ Parties précédentes quittées');
+            } catch (leaveError) {
+                console.warn('Aucune partie active à quitter:', leaveError);
+                // Ce n'est pas bloquant, on continue
+            }
 
-            const room = await multiplayerService.createRoom(requestData);
+            // CORRECTION: Convertir EnhancedCreateRoomRequest vers CreateRoomRequest
+            const createRequest = convertToCreateRoomRequest(formData);
 
-            if (room) {
-                showSuccess('Salon créé avec succès !');
-                // CORRECTION: Utiliser la bonne route pour le lobby multijoueur
-                navigate(`/multiplayer/rooms/${room.room_code}`, {
+            console.log('🔄 Requête convertie:', createRequest);
+
+            const room = await multiplayerService.createRoom(createRequest);
+
+            if (room?.room_code) {
+                showSuccess('🎉 Partie créée avec succès !');
+
+                // Navigation vers la route lobby avec roomCode
+                navigate(`/multiplayer/rooms/${room.room_code}/lobby`, {
                     state: { room, fromCreation: true }
                 });
             }
         } catch (err: any) {
             console.error('❌ Erreur création partie:', err);
 
-            // ✅ CORRECTION: Gestion d'erreur robuste avec extraction du message
             let errorMessage = 'Erreur lors de la création de la partie';
 
             if (err.response) {
@@ -121,7 +100,6 @@ export const MultiplayerGameCreation: React.FC = () => {
                 if (status === 422) {
                     // Erreur de validation Pydantic
                     if (data.detail && Array.isArray(data.detail)) {
-                        // Extraire les messages d'erreur de validation
                         const validationErrors = data.detail.map((error: any) => {
                             if (error.msg) {
                                 return `${error.loc ? error.loc.join('.') + ': ' : ''}${error.msg}`;
@@ -135,7 +113,6 @@ export const MultiplayerGameCreation: React.FC = () => {
                         errorMessage = 'Données invalides pour la création de partie';
                     }
                 } else {
-                    // Utiliser la méthode existante pour les autres erreurs
                     errorMessage = multiplayerService.handleMultiplayerError(err, 'createRoom');
                 }
             } else if (err.message) {
@@ -146,7 +123,7 @@ export const MultiplayerGameCreation: React.FC = () => {
         } finally {
             setIsCreating(false);
         }
-    };
+    }, [formData, navigate, showError, showSuccess, showWarning]);
 
     // Configurations des difficultés (même que le solo)
     const difficulties = [

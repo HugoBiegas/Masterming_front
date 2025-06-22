@@ -22,7 +22,8 @@ import { MultiplayerResults } from '@/pages/MultiplayerResults';
 // Services et hooks
 import { multiplayerService } from '@/services/multiplayer';
 import { useNotification } from '@/contexts/NotificationContext';
-import { GameResults } from '@/types/multiplayer';
+import {GameResults, PlayerProgress} from '@/types/multiplayer';
+import {Header} from "@/components/common/Header";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user, isLoading } = useAuth();
@@ -43,7 +44,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 // Composant wrapper pour MultiplayerResults avec chargement des données
 const MultiplayerResultsPage: React.FC = () => {
-    const { gameId } = useParams<{ gameId: string }>();
+    const { roomCode } = useParams<{ roomCode: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
     const { showError } = useNotification();
@@ -54,8 +55,8 @@ const MultiplayerResultsPage: React.FC = () => {
 
     useEffect(() => {
         const loadGameResults = async () => {
-            if (!gameId || !user) {
-                setError('ID de partie manquant ou utilisateur non connecté');
+            if (!roomCode || !user) {
+                setError('Code de room manquant ou utilisateur non connecté');
                 setLoading(false);
                 return;
             }
@@ -64,13 +65,13 @@ const MultiplayerResultsPage: React.FC = () => {
                 setLoading(true);
                 setError(null);
 
-                // Récupérer les résultats de la partie
-                const results = await multiplayerService.getGameResults(gameId);
+                const results = await multiplayerService.getGameResults(roomCode);
                 setGameResults(results);
 
             } catch (err: any) {
                 console.error('Erreur lors du chargement des résultats:', err);
-                const errorMessage = err.response?.data?.detail || 'Impossible de charger les résultats';
+                const errorMessage = err.response?.data?.detail ||
+                    'Erreur lors du chargement des résultats';
                 setError(errorMessage);
                 showError(errorMessage);
             } finally {
@@ -79,7 +80,7 @@ const MultiplayerResultsPage: React.FC = () => {
         };
 
         loadGameResults();
-    }, [gameId, user, showError]);
+    }, [roomCode, user, showError]);
 
     const handleClose = () => {
         navigate('/modes');
@@ -96,18 +97,16 @@ const MultiplayerResultsPage: React.FC = () => {
         );
     }
 
-    if (error) {
+    if (error || !gameResults) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
-                    <div className="text-red-500 text-6xl mb-4">❌</div>
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur</h2>
-                    <p className="text-gray-600 mb-4">{error}</p>
+                    <p className="text-red-600 mb-4">{error || 'Résultats non trouvés'}</p>
                     <button
-                        onClick={() => navigate('/modes')}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                        onClick={() => navigate('/multiplayer/browse')}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                     >
-                        Retour au menu
+                        Retour aux parties
                     </button>
                 </div>
             </div>
@@ -118,17 +117,116 @@ const MultiplayerResultsPage: React.FC = () => {
         return <Navigate to="/" replace />;
     }
 
+    // CORRECTION: Créer un composant wrapper qui passe les bonnes props
     return (
-        <MultiplayerResults
-            isOpen={true}
-            onClose={handleClose}
-            gameResults={gameResults}
-            currentUserId={user.id}
-            showDetailedStats={true}
-        />
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+            <Header />
+            <div className="container mx-auto px-4 py-8">
+                {/* SOLUTION: Composant de résultats en mode page (pas modal) */}
+                <MultiplayerResultsPageComponent
+                    gameResults={gameResults}
+                    currentUserId={user?.id || ''}
+                />
+            </div>
+        </div>
     );
 };
 
+const MultiplayerResultsPageComponent: React.FC<{
+    gameResults: GameResults;
+    currentUserId: string;
+}> = ({ gameResults, currentUserId }) => {
+    const navigate = useNavigate();
+    const { showSuccess } = useNotification();
+
+    const getCurrentPlayerResult = (): PlayerProgress | null => {
+        return gameResults.final_leaderboard.find(p => p.user_id === currentUserId) || null;
+    };
+
+    const currentPlayerResult = getCurrentPlayerResult();
+    const isWinner = currentPlayerResult?.is_winner || false;
+
+    return (
+        <div className="max-w-4xl mx-auto">
+            {/* En-tête des résultats */}
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div className="text-center">
+                    <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                        🏆 Résultats de la Partie
+                    </h1>
+                    {isWinner && (
+                        <div className="text-2xl text-yellow-600 font-bold mb-4">
+                            🎉 Félicitations ! Vous avez gagné ! 🎉
+                        </div>
+                    )}
+                    <div className="text-gray-600">
+                        <p>Partie terminée • {gameResults.total_players} joueurs</p>
+                        <p>Durée: {Math.floor(gameResults.duration / 60)}min {gameResults.duration % 60}s</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Classement final */}
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <h2 className="text-xl font-bold text-gray-800 mb-4">📊 Classement Final</h2>
+                <div className="space-y-3">
+                    {gameResults.final_leaderboard.map((player, index) => (
+                        <div
+                            key={player.user_id}
+                            className={`flex items-center justify-between p-4 rounded-lg border-2 ${
+                                player.user_id === currentUserId
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-gray-200 bg-gray-50'
+                            }`}
+                        >
+                            <div className="flex items-center space-x-4">
+                                <div className={`text-2xl font-bold ${
+                                    index === 0 ? 'text-yellow-500' :
+                                        index === 1 ? 'text-gray-400' :
+                                            index === 2 ? 'text-orange-600' :
+                                                'text-gray-600'
+                                }`}>
+                                    #{index + 1}
+                                </div>
+                                <div>
+                                    <div className="font-medium text-gray-800">
+                                        {player.username}
+                                        {player.user_id === currentUserId && ' (Vous)'}
+                                        {player.is_winner && ' 👑'}
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                        {player.attempts_count} tentatives
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-xl font-bold text-blue-600">
+                                    {player.score} pts
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-center space-x-4">
+                <button
+                    onClick={() => navigate('/multiplayer/browse')}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                    Nouvelle Partie
+                </button>
+                <button
+                    onClick={() => navigate('/modes')}
+                    className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                    Menu Principal
+                </button>
+            </div>
+        </div>
+    );
+};
 const AppRoutes: React.FC = () => {
     const { user, isLoading } = useAuth();
 
@@ -208,7 +306,7 @@ const AppRoutes: React.FC = () => {
             />
 
             <Route
-                path="/multiplayer/rooms/:roomCode"
+                path="/multiplayer/rooms/:roomCode/lobby"
                 element={
                     <ProtectedRoute>
                         <MultiplayerLobby />
@@ -227,7 +325,7 @@ const AppRoutes: React.FC = () => {
 
             {/* Route pour les résultats multijoueur - CORRIGÉE */}
             <Route
-                path="/multiplayer/rooms/:gameId/results"
+                path="/multiplayer/rooms/:roomCode/results"
                 element={
                     <ProtectedRoute>
                         <MultiplayerResultsPage />
