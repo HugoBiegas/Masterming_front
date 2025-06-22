@@ -30,6 +30,7 @@ export const MultiplayerLobby: React.FC = () => {
         refreshRoom
     } = useMultiplayer(roomCode);
 
+
     const [isStarting, setIsStarting] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);

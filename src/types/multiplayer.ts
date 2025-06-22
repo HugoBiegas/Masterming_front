@@ -216,6 +216,8 @@ export interface GameRoom {
     room_code: string;
     name: string;
     game_type: GameType;
+    game_type_display?: string;  // AJOUTÉ: Type pour l'affichage
+    game_type_raw?: string;      // AJOUTÉ: Type brut
     difficulty: Difficulty;
     status: GameStatus;
     max_players: number;
@@ -225,13 +227,63 @@ export interface GameRoom {
     allow_spectators: boolean;
     enable_chat: boolean;
     quantum_enabled: boolean;
+
+    // AJOUTÉ: Configuration de jeu complète
+    combination_length: number;
+    available_colors: number;
+    max_attempts: number;
+
+    // AJOUTÉ: Paramètres multijoueur
+    total_masterminds: number;
+    items_enabled: boolean;
+    items_per_mastermind: number;
+
+    // Métadonnées
     created_at: string;
     started_at?: string;
     estimated_finish?: string;
+
     creator: {
         id: string;
         username: string;
     };
+
+    // AJOUTÉ: Participants et logique
+    participants?: Array<{
+        user_id: string;
+        username: string;
+        status: string;
+        score: number;
+        attempts_count: number;
+        joined_at?: string;
+        is_ready: boolean;
+        is_creator: boolean;
+        is_winner: boolean;
+    }>;
+
+    // AJOUTÉ: Settings et infos supplémentaires
+    settings?: {
+        total_masterminds?: number;
+        items_enabled?: boolean;
+        items_per_mastermind?: number;
+        game_type_display?: string;
+        [key: string]: any;
+    };
+
+    can_start?: boolean;
+    creator_present?: boolean;
+}
+
+export interface GameParametersDisplay {
+    type: string;
+    difficulty: string;
+    masterminds: number;
+    items: string;
+    itemsIcon: string;
+    players: string;
+    quantum: boolean;
+    spectators: boolean;
+    chat: boolean;
 }
 
 export interface CreateRoomRequest {
@@ -240,25 +292,35 @@ export interface CreateRoomRequest {
     difficulty: Difficulty;
     max_players: number;
 
-    // AJOUT: Propriétés manquantes pour la configuration du jeu
+    // Configuration du mastermind
     combination_length: number;
     available_colors: number;
     max_attempts: number;
+
+    // Configuration multijoueur
     total_masterminds: number;
 
-    // AJOUT: Propriétés pour les fonctionnalités
+    // Options avancées
     quantum_enabled: boolean;
     items_enabled: boolean;
     items_per_mastermind: number;
 
-    // AJOUT: Propriétés de visibilité et accès
+    // Visibilité et accès
     is_public: boolean;
     password?: string;
     allow_spectators: boolean;
     enable_chat: boolean;
 
-    // AJOUT: Solution personnalisée (optionnelle)
+    // Solution personnalisée (optionnelle)
     solution?: number[];
+}
+
+export interface MultiplayerServiceResponse<T> {
+    success: boolean;
+    data: T;
+    message?: string;
+    error?: string;
+    timestamp?: string;
 }
 
 export interface MultiplayerResultsProps {
