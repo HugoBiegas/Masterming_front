@@ -57,7 +57,11 @@ export const MultiplayerBrowse: React.FC = () => {
                 setRooms(response.rooms);
                 setPage(1);
             } else {
-                setRooms(prev => currentPage === 1 ? response.rooms : [...prev, ...response.rooms]);
+                setRooms(prev => {
+                    const currentRooms = Array.isArray(prev) ? prev : [];
+                    const newRooms = Array.isArray(response?.rooms) ? response.rooms : [];
+                    return currentPage === 1 ? newRooms : [...currentRooms, ...newRooms];
+                });
             }
 
             setTotalPages(Math.ceil(response.total / 10));
@@ -81,7 +85,7 @@ export const MultiplayerBrowse: React.FC = () => {
         try {
             setIsSearching(true);
             const results = await multiplayerService.searchRooms(searchQuery, filters);
-            setRooms(results);
+            setRooms(Array.isArray(results) ? results : []);
             setPage(1);
             setHasNext(false);
         } catch (error: any) {
@@ -301,12 +305,12 @@ export const MultiplayerBrowse: React.FC = () => {
 
                 {/* Liste des salons */}
                 <div className="space-y-4">
-                    {loading && rooms.length === 0 ? (
+                    {loading && (!rooms || rooms.length === 0) ? (
                         <div className="text-center py-12">
                             <LoadingSpinner size="lg" />
                             <p className="mt-4 text-gray-600">Chargement des salons...</p>
                         </div>
-                    ) : rooms.length === 0 ? (
+                    ) : (!rooms || rooms.length === 0) ? (
                         <div className="text-center py-12 bg-white rounded-lg shadow-md">
                             <div className="text-6xl mb-4">🎯</div>
                             <h3 className="text-xl font-semibold text-gray-800 mb-2">
@@ -323,7 +327,7 @@ export const MultiplayerBrowse: React.FC = () => {
                             </button>
                         </div>
                     ) : (
-                        rooms.map((room) => (
+                        (rooms || []).map((room) => (
                             <div
                                 key={room.id}
                                 onClick={() => handleRoomSelect(room)}
