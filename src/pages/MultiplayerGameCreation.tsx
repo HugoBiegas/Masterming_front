@@ -462,24 +462,6 @@ export const MultiplayerGameCreation: React.FC = () => {
                                 )}
                             </div>
 
-                            {/* Options avancées */}
-                            {!quickMode && (
-                                <div className="space-y-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAdvanced(!showAdvanced)}
-                                        className="flex items-center justify-between w-full p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-                                    >
-                                        <span className="font-medium text-gray-700">
-                                            {showAdvanced ? 'Masquer' : 'Afficher'} les options avancées
-                                        </span>
-                                        <span className={`transform transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>
-                                            ▼
-                                        </span>
-                                    </button>
-                                </div>
-                            )}
-
                             {/* Résumé de la configuration */}
                             <div className="bg-gray-50 rounded-lg p-4">
                                 <h4 className="font-medium text-gray-800 mb-2">📋 Résumé du salon</h4>
