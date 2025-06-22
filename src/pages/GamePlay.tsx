@@ -19,7 +19,7 @@ export const GamePlay: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { game, loading, error, makeAttempt, isGameFinished, isGameActive, refreshGame } = useGame(gameId);
-    const { showError, showSuccess, showWarning } = useNotification();
+    const { showError, showSuccess, showWarning, showInfo } = useNotification();
 
     const [currentCombination, setCurrentCombination] = useState<number[]>([]);
     const [selectedColor, setSelectedColor] = useState<number | null>(null);
@@ -222,28 +222,13 @@ export const GamePlay: React.FC = () => {
     // NOUVEAUX GESTIONNAIRES POUR VictoryDefeatDisplay
     const handleNewGame = useCallback(async () => {
         try {
-            // Créer une nouvelle partie avec les mêmes paramètres
-            const newGameData: GameCreateRequest = {
-                game_type: game?.game_type || GameType.CLASSIC,
-                game_mode: GameMode.SINGLE,
-                difficulty: game?.difficulty || Difficulty.MEDIUM,
-                max_attempts: game?.max_attempts || difficultyConfig.attempts,
-                max_players: 1,
-                is_private: false,
-                allow_spectators: false,
-                enable_chat: false,
-                quantum_enabled: game?.game_type === GameType.QUANTUM || false,
-                auto_leave: true
-            };
-
-            const response = await gameService.createGameWithAutoLeave(newGameData);
-            showSuccess('🎮 Nouvelle partie créée !');
-            navigate(`/game/${response.id}`);
+            showInfo('🎮 Définissez votre nouvelle partie  !');
+            navigate(`/solo`);
         } catch (error: any) {
             console.error('Erreur création nouvelle partie:', error);
             showError('Erreur lors de la création d\'une nouvelle partie');
         }
-    }, [game, difficultyConfig, showSuccess, showError, navigate]);
+    }, [game, difficultyConfig, showInfo, showError, navigate]);
 
     const handleBackToMenu = useCallback(() => {
         navigate('/modes');
