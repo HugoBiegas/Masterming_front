@@ -19,6 +19,11 @@ import { MultiplayerLobby } from '@/pages/MultiplayerLobby';
 import { MultiplayerGame } from '@/pages/MultiplayerGame';
 import { MultiplayerResults } from '@/pages/MultiplayerResults';
 
+// Services et hooks
+import { multiplayerService } from '@/services/multiplayer';
+import { useNotification } from '@/contexts/NotificationContext';
+import { GameResults } from '@/types/multiplayer';
+
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user, isLoading } = useAuth();
 
@@ -34,6 +39,94 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     }
 
     return user ? <>{children}</> : <Navigate to="/" replace />;
+};
+
+// Composant wrapper pour MultiplayerResults avec chargement des données
+const MultiplayerResultsPage: React.FC = () => {
+    const { gameId } = useParams<{ gameId: string }>();
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const { showError } = useNotification();
+
+    const [gameResults, setGameResults] = useState<GameResults | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadGameResults = async () => {
+            if (!gameId || !user) {
+                setError('ID de partie manquant ou utilisateur non connecté');
+                setLoading(false);
+                return;
+            }
+
+            try {
+                setLoading(true);
+                setError(null);
+
+                // Récupérer les résultats de la partie
+                const results = await multiplayerService.getGameResults(gameId);
+                setGameResults(results);
+
+            } catch (err: any) {
+                console.error('Erreur lors du chargement des résultats:', err);
+                const errorMessage = err.response?.data?.detail || 'Impossible de charger les résultats';
+                setError(errorMessage);
+                showError(errorMessage);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadGameResults();
+    }, [gameId, user, showError]);
+
+    const handleClose = () => {
+        navigate('/modes');
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center">
+                    <LoadingSpinner size="lg" />
+                    <p className="mt-4 text-gray-600">Chargement des résultats...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="text-red-500 text-6xl mb-4">❌</div>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur</h2>
+                    <p className="text-gray-600 mb-4">{error}</p>
+                    <button
+                        onClick={() => navigate('/modes')}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                        Retour au menu
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (!user) {
+        return <Navigate to="/" replace />;
+    }
+
+    return (
+        <MultiplayerResults
+            isOpen={true}
+            onClose={handleClose}
+            gameResults={gameResults}
+            currentUserId={user.id}
+            showDetailedStats={true}
+        />
+    );
 };
 
 const AppRoutes: React.FC = () => {
@@ -58,7 +151,7 @@ const AppRoutes: React.FC = () => {
                 element={user ? <Navigate to="/modes" replace /> : <AuthPage />}
             />
 
-            {/* Sélection du mode de jeu */}
+            {/* Routes protégées */}
             <Route
                 path="/modes"
                 element={
@@ -68,9 +161,9 @@ const AppRoutes: React.FC = () => {
                 }
             />
 
-            {/* Routes Solo */}
+            {/* Routes solo */}
             <Route
-                path="/solo"
+                path="/solo/create"
                 element={
                     <ProtectedRoute>
                         <SoloGameCreation />
@@ -79,7 +172,7 @@ const AppRoutes: React.FC = () => {
             />
 
             <Route
-                path="/game/:gameId"
+                path="/solo/game/:gameId"
                 element={
                     <ProtectedRoute>
                         <GamePlay />
@@ -87,7 +180,7 @@ const AppRoutes: React.FC = () => {
                 }
             />
 
-            {/* Routes Multijoueur */}
+            {/* Routes multijoueur */}
             <Route
                 path="/multiplayer/create"
                 element={
@@ -107,7 +200,7 @@ const AppRoutes: React.FC = () => {
             />
 
             <Route
-                path="/multiplayer/lobby/:gameId"
+                path="/multiplayer/lobby/:roomCode"
                 element={
                     <ProtectedRoute>
                         <MultiplayerLobby />
@@ -116,7 +209,7 @@ const AppRoutes: React.FC = () => {
             />
 
             <Route
-                path="/multiplayer/game/:gameId"
+                path="/multiplayer/game/:roomCode"
                 element={
                     <ProtectedRoute>
                         <MultiplayerGame />
@@ -124,16 +217,17 @@ const AppRoutes: React.FC = () => {
                 }
             />
 
+            {/* Route pour les résultats multijoueur - CORRIGÉE */}
             <Route
                 path="/multiplayer/results/:gameId"
                 element={
                     <ProtectedRoute>
-                        <MultiplayerResults />
+                        <MultiplayerResultsPage />
                     </ProtectedRoute>
                 }
             />
 
-            {/* Route pour rejoindre par code de room */}
+            {/* Route pour rejoindre par code de room - CORRIGÉE */}
             <Route
                 path="/multiplayer/join/:roomCode"
                 element={
@@ -149,10 +243,11 @@ const AppRoutes: React.FC = () => {
     );
 };
 
-// Composant pour rejoindre une partie par code de room
+// Composant pour rejoindre une partie par code de room - CORRIGÉ
 const JoinByRoomCode: React.FC = () => {
     const { roomCode } = useParams<{ roomCode: string }>();
     const navigate = useNavigate();
+    const { showError, showSuccess } = useNotification();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -165,30 +260,47 @@ const JoinByRoomCode: React.FC = () => {
             }
 
             try {
-                // Importer le service multijoueur
-                const { multiplayerService } = await import('@/services/multiplayer');
+                setLoading(true);
+                setError(null);
 
-                // Rechercher la partie par code
-                const game = await multiplayerService.getGameByRoomCode(roomCode);
+                // Utiliser getRoomDetails au lieu de getGameByRoomCode
+                const room = await multiplayerService.getRoomDetails(roomCode);
+
+                // Vérifier si la room peut être rejointe
+                if (!multiplayerService.canJoinRoom(room)) {
+                    if (multiplayerService.isRoomFull(room)) {
+                        setError('Cette partie est complète');
+                        return;
+                    }
+                    if (multiplayerService.isGameActive(room) || multiplayerService.isGameFinished(room)) {
+                        setError('Cette partie est déjà en cours ou terminée');
+                        return;
+                    }
+                }
 
                 // Rediriger vers la page de navigation avec cette partie pré-sélectionnée
                 navigate('/multiplayer/browse', {
-                    state: { preselectedGame: game }
+                    state: { preselectedRoom: room }
                 });
 
+                showSuccess(`Partie "${room.name}" trouvée !`);
+
             } catch (error: any) {
-                console.error('Erreur recherche par code:', error);
-                setError('Code de room invalide ou partie introuvable');
+                console.error('Erreur lors de la recherche de la partie:', error);
+                const errorMessage = error.response?.data?.detail || 'Impossible de trouver cette partie';
+                setError(errorMessage);
+                showError(errorMessage);
+            } finally {
                 setLoading(false);
             }
         };
 
         joinGame();
-    }, [roomCode, navigate]);
+    }, [roomCode, navigate, showError, showSuccess]);
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
                     <LoadingSpinner size="lg" />
                     <p className="mt-4 text-gray-600">Recherche de la partie...</p>
@@ -199,36 +311,44 @@ const JoinByRoomCode: React.FC = () => {
 
     if (error) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center">
-                    <div className="text-red-500 text-6xl mb-4">🔍</div>
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Partie introuvable</h2>
+                    <div className="text-red-500 text-6xl mb-4">❌</div>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Partie non trouvée</h2>
                     <p className="text-gray-600 mb-4">{error}</p>
-                    <button
-                        onClick={() => navigate('/multiplayer/browse')}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                        Parcourir les parties
-                    </button>
+                    <div className="space-y-2">
+                        <button
+                            onClick={() => navigate('/multiplayer/browse')}
+                            className="block w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                        >
+                            Parcourir les parties
+                        </button>
+                        <button
+                            onClick={() => navigate('/modes')}
+                            className="block w-full px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                        >
+                            Retour au menu
+                        </button>
+                    </div>
                 </div>
             </div>
         );
     }
 
-    return null; // Ne devrait jamais être affiché
+    return null;
 };
 
 const App: React.FC = () => {
     return (
-        <AuthProvider>
-            <NotificationProvider>
-                <Router>
-                    <div className="App">
+        <Router>
+            <AuthProvider>
+                <NotificationProvider>
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
                         <AppRoutes />
                     </div>
-                </Router>
-            </NotificationProvider>
-        </AuthProvider>
+                </NotificationProvider>
+            </AuthProvider>
+        </Router>
     );
 };
 

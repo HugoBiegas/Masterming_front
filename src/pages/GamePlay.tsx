@@ -5,10 +5,11 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { GameBoard } from '@/components/game/GameBoard';
 import { ColorSelectionModal } from '@/components/game/ColorSelectionModal';
 import { AttemptHistory } from '@/components/game/AttemptHistory';
+import { VictoryDefeatDisplay } from '@/components/game/VictoryDefeatDisplay';
 import { useGame } from '@/hooks/useGame';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { GameStatus } from '@/types/game';
+import { GameStatus, GameType, GameMode, Difficulty, GameCreateRequest } from '@/types/game';
 import {COLOR_PALETTE, DIFFICULTY_CONFIGS} from '@/utils/constants';
 import { gameService } from '@/services/game';
 
@@ -36,12 +37,18 @@ export const GamePlay: React.FC = () => {
     // État pour la solution révélée
     const [revealedSolution, setRevealedSolution] = useState<number[] | null>(null);
 
+    // NOUVEAU: État pour forcer l'affichage de victoire/défaite
+    const [showVictoryDefeat, setShowVictoryDefeat] = useState(false);
+
     // Réfs pour les effets
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const gameCheckRef = useRef<NodeJS.Timeout | null>(null);
 
     // Configuration du jeu basée sur la difficulté
     const difficultyConfig = game ? DIFFICULTY_CONFIGS[game.difficulty] : DIFFICULTY_CONFIGS.medium;
+
+    // Vérifier si la soumission est possible
+    const canSubmit = currentCombination.every(color => color > 0);
 
     // Initialiser la combinaison au bon moment
     useEffect(() => {
@@ -92,6 +99,7 @@ export const GamePlay: React.FC = () => {
 
             if (game?.status === 'finished' && game.solution) {
                 setRevealedSolution(game.solution);
+                setShowVictoryDefeat(true); // NOUVEAU: Forcer l'affichage
                 if (isWinner) {
                     showSuccess('🎉 Félicitations ! Vous avez gagné !');
                 } else {
@@ -152,12 +160,20 @@ export const GamePlay: React.FC = () => {
             if (result) {
                 if (result.is_winning) {
                     setIsWinner(true);
-                    setRevealedSolution(game.solution || null);
+                    setRevealedSolution(game.solution || result.solution || null);
+                    setShowVictoryDefeat(true); // NOUVEAU: Forcer l'affichage immédiatement
                     showSuccess('🎯 Bravo ! Vous avez trouvé la solution !');
                     setIsTimerRunning(false);
                 } else {
                     setCurrentScore(result.score || 0);
                     showSuccess(`✅ Tentative validée ! Score: ${result.score || 0}`);
+
+                    // NOUVEAU: Vérifier si on a épuisé les tentatives
+                    if (result.remaining_attempts === 0 || (game.attempts.length + 1) >= difficultyConfig.attempts) {
+                        setIsWinner(false);
+                        setRevealedSolution(game.solution || result.solution || null);
+                        setShowVictoryDefeat(true);
+                    }
                 }
 
                 // Réinitialiser la combinaison
@@ -168,7 +184,7 @@ export const GamePlay: React.FC = () => {
             console.error('Erreur tentative:', error);
             showError(error.message || 'Erreur lors de la soumission');
         }
-    }, [game, currentCombination, makeAttempt, difficultyConfig.length, showError, showSuccess]);
+    }, [game, currentCombination, makeAttempt, difficultyConfig.length, difficultyConfig.attempts, showError, showSuccess, canSubmit]);
 
     // Gestionnaire pour quitter la partie
     const handleLeaveGame = useCallback(async () => {
@@ -203,15 +219,42 @@ export const GamePlay: React.FC = () => {
         }
     }, [game, isStarting, refreshGame, showSuccess, showError]);
 
+    // NOUVEAUX GESTIONNAIRES POUR VictoryDefeatDisplay
+    const handleNewGame = useCallback(async () => {
+        try {
+            // Créer une nouvelle partie avec les mêmes paramètres
+            const newGameData: GameCreateRequest = {
+                game_type: game?.game_type || GameType.CLASSIC,
+                game_mode: GameMode.SINGLE,
+                difficulty: game?.difficulty || Difficulty.MEDIUM,
+                max_attempts: game?.max_attempts || difficultyConfig.attempts,
+                max_players: 1,
+                is_private: false,
+                allow_spectators: false,
+                enable_chat: false,
+                quantum_enabled: game?.game_type === GameType.QUANTUM || false,
+                auto_leave: true
+            };
+
+            const response = await gameService.createGameWithAutoLeave(newGameData);
+            showSuccess('🎮 Nouvelle partie créée !');
+            navigate(`/game/${response.id}`);
+        } catch (error: any) {
+            console.error('Erreur création nouvelle partie:', error);
+            showError('Erreur lors de la création d\'une nouvelle partie');
+        }
+    }, [game, difficultyConfig, showSuccess, showError, navigate]);
+
+    const handleBackToMenu = useCallback(() => {
+        navigate('/modes');
+    }, [navigate]);
+
     // Formatage du temps
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
-
-    // Vérifier si la soumission est possible
-    const canSubmit = currentCombination.every(color => color > 0);
 
     // Gestion des états de loading optimisée
     if (loading || !game) {
@@ -355,29 +398,44 @@ export const GamePlay: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Plateau de jeu */}
-                        <div className="bg-white rounded-lg shadow-lg p-6 game-card">
-                            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                                🎯 Plateau de Jeu
-                            </h2>
-
-                            <p className="text-sm text-gray-600 mb-4 text-center">
-                                💡 Cliquez sur les cercles vides pour choisir une couleur
-                            </p>
-
-                            <GameBoard
-                                combination={currentCombination}
-                                onPositionClick={handlePositionClick}
-                                onRemoveColor={handleRemoveColor}
-                                onSubmitAttempt={handleSubmitAttempt}
-                                selectedColor={selectedColor}
-                                isActive={isGameActive}
-                                canSubmit={canSubmit}
+                        {/* NOUVEAU: Affichage de victoire/défaite */}
+                        {showVictoryDefeat && revealedSolution && (
+                            <VictoryDefeatDisplay
+                                isWinner={isWinner}
+                                playerScore={currentScore}
+                                playerAttempts={game.attempts.length}
+                                maxAttempts={difficultyConfig.attempts}
+                                solution={revealedSolution}
+                                onNewGame={handleNewGame}
+                                onBackToMenu={handleBackToMenu}
                             />
-                        </div>
+                        )}
 
-                        {/* Solution révélée */}
-                        {revealedSolution && (
+                        {/* Plateau de jeu - masqué si victoire/défaite affichée */}
+                        {!showVictoryDefeat && (
+                            <div className="bg-white rounded-lg shadow-lg p-6 game-card">
+                                <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                                    🎯 Plateau de Jeu
+                                </h2>
+
+                                <p className="text-sm text-gray-600 mb-4 text-center">
+                                    💡 Cliquez sur les cercles vides pour choisir une couleur
+                                </p>
+
+                                <GameBoard
+                                    combination={currentCombination}
+                                    onPositionClick={handlePositionClick}
+                                    onRemoveColor={handleRemoveColor}
+                                    onSubmitAttempt={handleSubmitAttempt}
+                                    selectedColor={selectedColor}
+                                    isActive={isGameActive}
+                                    canSubmit={canSubmit}
+                                />
+                            </div>
+                        )}
+
+                        {/* Solution révélée - seulement si pas de VictoryDefeatDisplay */}
+                        {revealedSolution && !showVictoryDefeat && (
                             <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-lg p-6 game-card">
                                 <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
                                     <span className="text-2xl mr-2">🎯</span>
