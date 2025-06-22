@@ -74,19 +74,26 @@ export const WEBSOCKET_RECONNECT_DELAY = 1000;
 export const GAME_TYPE_INFO = {
     [GameType.CLASSIC]: {
         name: "Classique",
-        description: "Mastermind traditionnel"
+        description: "Mastermind traditionnel",
+        icon: '🎲'
+
     },
     [GameType.QUANTUM]: {
         name: "Quantique",
-        description: "Avec fonctionnalités quantiques"
+        description: "Avec fonctionnalités quantiques",
+        icon: '⚛️'
     },
     [GameType.SPEED]: {
         name: "Rapidité",
-        description: "Mode chronométré"
+        description: "Mode chronométré",
+        icon: '🎲'
+
     },
     [GameType.PRECISION]: {
         name: "Précision",
-        description: "Minimisez les tentatives"
+        description: "Minimisez les tentatives",
+        icon: '🎲'
+
     }
 };
 

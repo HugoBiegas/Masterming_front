@@ -119,6 +119,9 @@ export interface MultiplayerGameCreateRequest {
     is_private: boolean;
     password?: string;
     items_enabled: boolean;
+    allow_spectators: boolean; // AJOUTÉ: Champ manquant
+    enable_chat: boolean; // AJOUTÉ: Champ manquant
+    quantum_enabled: boolean; // AJOUTÉ: Champ manquant
 }
 
 export interface MultiplayerGameCreateResponse {
@@ -233,7 +236,7 @@ export interface GameRoom {
 
 export interface CreateRoomRequest {
     name: string;
-    game_type: GameType;
+    game_type: MultiplayerGameType;
     difficulty: Difficulty;
     max_players: number;
     is_private: boolean;
@@ -241,7 +244,10 @@ export interface CreateRoomRequest {
     allow_spectators: boolean;
     enable_chat: boolean;
     quantum_enabled: boolean;
+    total_masterminds: number; // AJOUTÉ: Champ manquant pour le nombre de masterminds
+    items_enabled?: boolean; // AJOUTÉ: Champ pour les objets bonus/malus
 }
+
 export interface LobbyFilters {
     game_type?: GameType;
     difficulty?: Difficulty;
@@ -471,6 +477,7 @@ export type GameActionResult = {
     message: string;
     data?: any;
 };
+
 export const convertToLeaderboard = (player: PlayerProgress): PlayerLeaderboard => ({
     ...player,
     final_score: player.score,
@@ -479,6 +486,7 @@ export const convertToLeaderboard = (player: PlayerProgress): PlayerLeaderboard 
     bonus_points: 0,
     penalty_points: 0
 });
+
 // Interface pour les hooks personnalisés
 export interface UseMultiplayerReturn {
     multiplayerGame: MultiplayerGame | null;

@@ -160,6 +160,14 @@ const AppRoutes: React.FC = () => {
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="/solo"
+                element={
+                    <ProtectedRoute>
+                        <Navigate to="/solo/create" replace />
+                    </ProtectedRoute>
+                }
+            />
 
             {/* Routes solo */}
             <Route

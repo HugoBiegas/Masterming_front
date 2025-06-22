@@ -6,15 +6,26 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { multiplayerService } from '@/services/multiplayer';
 import {
     CreateRoomRequest,
-    Difficulty
+    Difficulty,
+    MultiplayerGameType
 } from '@/types/multiplayer';
 import { GameType } from '@/types/game';
 import { DIFFICULTY_CONFIGS, GAME_TYPE_INFO } from '@/utils/constants';
 
-// Interface étendue pour inclure les types de partie du solo
-interface EnhancedCreateRoomRequest extends CreateRoomRequest {
+// Interface étendue pour inclure les types de partie du solo et le nombre de masterminds
+interface EnhancedCreateRoomRequest {
+    name: string;
+    game_type: GameType;
     base_game_type: GameType; // Type de partie comme dans le solo
+    difficulty: Difficulty;
+    max_players: number;
+    is_private: boolean;
+    password: string;
+    allow_spectators: boolean;
+    enable_chat: boolean;
     quantum_enabled: boolean; // Support quantique
+    total_masterminds: number; // NOUVEAU: Nombre de masterminds
+    items_enabled: boolean; // NOUVEAU: Objets bonus/malus
 }
 
 export const MultiplayerGameCreation: React.FC = () => {
@@ -35,11 +46,28 @@ export const MultiplayerGameCreation: React.FC = () => {
         password: '',
         allow_spectators: false,
         enable_chat: true,
-        quantum_enabled: false // NOUVEAU: Support quantique
+        quantum_enabled: false, // NOUVEAU: Support quantique
+        total_masterminds: 3, // NOUVEAU: Nombre de masterminds par défaut
+        items_enabled: true // NOUVEAU: Objets bonus/malus activés par défaut
     });
 
     const [isCreating, setIsCreating] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(!quickMode);
+
+    // NOUVEAU: Fonction de mapping GameType vers MultiplayerGameType
+    const mapGameTypeToMultiplayerType = (gameType: GameType): MultiplayerGameType => {
+        // Pour l'instant, tous les types de jeu solo correspondent au mode multi-mastermind
+        // où chaque joueur résout ses propres masterminds
+        switch (gameType) {
+            case GameType.CLASSIC:
+            case GameType.SPEED:
+            case GameType.PRECISION:
+            case GameType.QUANTUM:
+                return MultiplayerGameType.MULTI_MASTERMIND;
+            default:
+                return MultiplayerGameType.MULTI_MASTERMIND;
+        }
+    };
 
     const handleInputChange = (field: keyof EnhancedCreateRoomRequest, value: any) => {
         setFormData(prev => {
@@ -76,14 +104,16 @@ export const MultiplayerGameCreation: React.FC = () => {
         try {
             const requestData = {
                 name: formData.name,
-                game_type: formData.base_game_type, // Utiliser le type de base
+                game_type: mapGameTypeToMultiplayerType(formData.base_game_type), // CORRECTION: Mapper vers MultiplayerGameType
                 difficulty: formData.difficulty,
                 max_players: formData.max_players,
                 is_private: formData.is_private,
                 password: formData.password || "", // Assurer que ce n'est jamais undefined
                 allow_spectators: formData.allow_spectators,
                 enable_chat: formData.enable_chat,
-                quantum_enabled: formData.quantum_enabled
+                quantum_enabled: formData.quantum_enabled,
+                total_masterminds: formData.total_masterminds, // NOUVEAU: Inclure le nombre de masterminds
+                items_enabled: formData.items_enabled || true // NOUVEAU: Inclure les objets
             };
 
             console.log('🌐 Creating multiplayer room with data:', requestData);
@@ -92,7 +122,8 @@ export const MultiplayerGameCreation: React.FC = () => {
 
             if (room) {
                 showSuccess('Salon créé avec succès !');
-                navigate(`/multiplayer/room/${room.room_code}`, {
+                // CORRECTION: Utiliser la bonne route pour le lobby multijoueur
+                navigate(`/multiplayer/lobby/${room.room_code}`, {
                     state: { room, fromCreation: true }
                 });
             }
@@ -140,74 +171,76 @@ export const MultiplayerGameCreation: React.FC = () => {
         {
             value: Difficulty.EASY,
             label: 'Facile',
-            desc: `${DIFFICULTY_CONFIGS.easy.colors} couleurs, ${DIFFICULTY_CONFIGS.easy.length} positions`,
-            icon: '🟢'
+            desc: `${DIFFICULTY_CONFIGS.easy.colors} couleurs, ${DIFFICULTY_CONFIGS.easy.length} positions, ${DIFFICULTY_CONFIGS.easy.attempts} tentatives`,
+            color: 'bg-green-100 text-green-800'
         },
         {
             value: Difficulty.MEDIUM,
             label: 'Moyen',
-            desc: `${DIFFICULTY_CONFIGS.medium.colors} couleurs, ${DIFFICULTY_CONFIGS.medium.length} positions`,
-            icon: '🟡'
+            desc: `${DIFFICULTY_CONFIGS.medium.colors} couleurs, ${DIFFICULTY_CONFIGS.medium.length} positions, ${DIFFICULTY_CONFIGS.medium.attempts} tentatives`,
+            color: 'bg-yellow-100 text-yellow-800'
         },
         {
             value: Difficulty.HARD,
             label: 'Difficile',
-            desc: `${DIFFICULTY_CONFIGS.hard.colors} couleurs, ${DIFFICULTY_CONFIGS.hard.length} positions`,
-            icon: '🟠'
+            desc: `${DIFFICULTY_CONFIGS.hard.colors} couleurs, ${DIFFICULTY_CONFIGS.hard.length} positions, ${DIFFICULTY_CONFIGS.hard.attempts} tentatives`,
+            color: 'bg-orange-100 text-orange-800'
         },
         {
             value: Difficulty.EXPERT,
             label: 'Expert',
-            desc: `${DIFFICULTY_CONFIGS.expert.colors} couleurs, ${DIFFICULTY_CONFIGS.expert.length} positions`,
-            icon: '🔴'
+            desc: `${DIFFICULTY_CONFIGS.expert.colors} couleurs, ${DIFFICULTY_CONFIGS.expert.length} positions, ${DIFFICULTY_CONFIGS.expert.attempts} tentatives`,
+            color: 'bg-red-100 text-red-800'
         }
     ];
 
-    // Types de partie (harmonisés avec le solo)
+    // Types de partie (même que le solo)
     const gameTypes = [
         {
             value: GameType.CLASSIC,
-            label: GAME_TYPE_INFO[GameType.CLASSIC].name,
-            desc: GAME_TYPE_INFO[GameType.CLASSIC].description,
             icon: '🎯',
-            available: true
-        },
-        {
-            value: GameType.QUANTUM,
-            label: GAME_TYPE_INFO[GameType.QUANTUM].name,
-            desc: GAME_TYPE_INFO[GameType.QUANTUM].description,
-            icon: '⚛️',
+            name: 'Classique',
+            desc: 'Mastermind traditionnel avec hints intelligents',
             available: true,
-            special: true
+            special: false
         },
         {
             value: GameType.SPEED,
-            label: GAME_TYPE_INFO[GameType.SPEED].name,
-            desc: GAME_TYPE_INFO[GameType.SPEED].description,
             icon: '⚡',
-            available: true
+            name: 'Rapidité',
+            desc: 'Contre la montre, classement par vitesse',
+            available: true,
+            special: false
         },
         {
             value: GameType.PRECISION,
-            label: GAME_TYPE_INFO[GameType.PRECISION].name,
-            desc: GAME_TYPE_INFO[GameType.PRECISION].description,
-            icon: '🎪',
-            available: true
+            icon: '🎯',
+            name: 'Précision',
+            desc: 'Minimisez les tentatives, chaque coup compte',
+            available: true,
+            special: false
+        },
+        {
+            value: GameType.QUANTUM,
+            icon: '⚛️',
+            name: 'Quantique',
+            desc: 'Superposition et intrication quantique',
+            available: true,
+            special: true
         }
     ];
 
-    const playerOptions = [2, 4, 6, 8, 10, 12];
-
-    const selectedDifficulty = DIFFICULTY_CONFIGS[formData.difficulty];
+    const selectedDifficulty = formData.difficulty ? DIFFICULTY_CONFIGS[formData.difficulty] : DIFFICULTY_CONFIGS[Difficulty.MEDIUM];
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-100">
             <Header />
 
-            <div className="container mx-auto py-8 px-4">
-                <div className="max-w-2xl mx-auto">
+            <div className="container mx-auto py-8">
+                <div className="max-w-3xl mx-auto">
+                    {/* En-tête */}
                     <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                        <h1 className="text-3xl font-bold text-gray-800 mb-4">
                             {quickMode ? '⚡ Partie Rapide Multijoueur' : '🎯 Créer une Partie Multijoueur'}
                         </h1>
                         <p className="text-gray-600">
@@ -238,22 +271,17 @@ export const MultiplayerGameCreation: React.FC = () => {
                                                         ? 'border-purple-500 bg-purple-50'
                                                         : 'border-blue-500 bg-blue-50'
                                                     : type.available
-                                                        ? 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                                        : 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60'
-                                            }`}
+                                                        ? 'border-gray-200 hover:border-gray-300'
+                                                        : 'border-gray-100 bg-gray-50 cursor-not-allowed'
+                                            } ${!type.available ? 'opacity-50' : ''}`}
                                         >
                                             <div className="flex items-center space-x-3">
                                                 <span className="text-2xl">{type.icon}</span>
                                                 <div className="flex-1">
-                                                    <h3 className="font-medium text-gray-800">{type.label}</h3>
+                                                    <h3 className="font-medium text-gray-800">{type.name}</h3>
                                                     <p className="text-sm text-gray-600">{type.desc}</p>
-                                                    {type.value === GameType.QUANTUM && (
-                                                        <p className="text-xs text-purple-600 mt-1">
-                                                            🔬 Inclut les fonctionnalités quantiques
-                                                        </p>
-                                                    )}
                                                     {!type.available && (
-                                                        <p className="text-xs text-gray-500 mt-1">Bientôt disponible</p>
+                                                        <span className="text-xs text-orange-600 font-medium">Bientôt disponible</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -262,171 +290,189 @@ export const MultiplayerGameCreation: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Configuration de base */}
+                            {/* Nom du salon */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nom du salon
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={(e) => handleInputChange('name', e.target.value)}
+                                    placeholder="Ma partie de Mastermind"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    maxLength={50}
+                                />
+                            </div>
+
+                            {/* Difficulté */}
+                            <div className="space-y-3">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Difficulté
+                                </label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {difficulties.map((difficulty) => (
+                                        <div
+                                            key={difficulty.value}
+                                            onClick={() => handleInputChange('difficulty', difficulty.value)}
+                                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                                                formData.difficulty === difficulty.value
+                                                    ? 'border-blue-500 bg-blue-50'
+                                                    : 'border-gray-200 hover:border-gray-300'
+                                            }`}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <h3 className="font-medium text-gray-800">{difficulty.label}</h3>
+                                                    <p className="text-sm text-gray-600 mt-1">{difficulty.desc}</p>
+                                                </div>
+                                                <span className={`px-2 py-1 text-xs rounded-full font-medium ${difficulty.color}`}>
+                                                    {difficulty.label}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* NOUVEAU: Nombre de masterminds */}
                             <div className="space-y-4">
                                 <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">
-                                    Configuration de Base
+                                    Configuration Multijoueur
                                 </h2>
 
-                                {/* Difficulté (harmonisée avec le solo) */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Difficulté
+                                        Nombre de masterminds à résoudre
                                     </label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {difficulties.map((diff) => (
-                                            <div
-                                                key={diff.value}
-                                                onClick={() => handleInputChange('difficulty', diff.value)}
-                                                className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                                                    formData.difficulty === diff.value
-                                                        ? 'border-blue-500 bg-blue-50'
-                                                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <div className="flex items-center space-x-3">
-                                                    <span className="text-xl">{diff.icon}</span>
-                                                    <div>
-                                                        <h3 className="font-medium text-gray-800">{diff.label}</h3>
-                                                        <p className="text-sm text-gray-600">{diff.desc}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Nombre maximum de joueurs */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Nombre maximum de joueurs
-                                    </label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {playerOptions.map((count) => (
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                        {[1, 2, 3, 4, 5].map((count) => (
                                             <button
                                                 key={count}
                                                 type="button"
-                                                onClick={() => handleInputChange('max_players', count)}
-                                                className={`px-4 py-2 rounded-lg border-2 transition-all ${
-                                                    formData.max_players === count
+                                                onClick={() => handleInputChange('total_masterminds', count)}
+                                                className={`p-3 rounded-lg border-2 text-center transition-all ${
+                                                    formData.total_masterminds === count
                                                         ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                        : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                                        : 'border-gray-200 hover:border-gray-300'
                                                 }`}
                                             >
-                                                {count} 👥
+                                                <div className="font-bold text-lg">{count}</div>
+                                                <div className="text-xs text-gray-600">
+                                                    {count === 1 ? 'Rapide' : count <= 3 ? 'Équilibré' : 'Long'}
+                                                </div>
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Minimum 2 joueurs requis pour démarrer
+                                    <p className="text-sm text-gray-600 mt-2">
+                                        Chaque joueur doit résoudre {formData.total_masterminds} mastermind{formData.total_masterminds > 1 ? 's' : ''} pour gagner.
+                                        À chaque mastermind complété, vous obtenez des objets bonus/malus !
                                     </p>
                                 </div>
                             </div>
 
-                            {/* Configuration avancée */}
-                            {showAdvanced && !quickMode && (
-                                <div className="space-y-4">
-                                    <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">
-                                        Options Avancées
-                                    </h2>
-
-                                    {/* Options de jeu */}
-                                    <div className="space-y-3">
-                                        <label className="flex items-center space-x-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.allow_spectators}
-                                                onChange={(e) => handleInputChange('allow_spectators', e.target.checked)}
-                                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                            />
-                                            <div>
-                                                <span className="text-sm font-medium text-gray-700">
-                                                    👁️ Autoriser les spectateurs
-                                                </span>
-                                                <p className="text-xs text-gray-500">
-                                                    Permettre aux joueurs de regarder la partie
-                                                </p>
-                                            </div>
-                                        </label>
-
-                                        <label className="flex items-center space-x-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.enable_chat}
-                                                onChange={(e) => handleInputChange('enable_chat', e.target.checked)}
-                                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                            />
-                                            <div>
-                                                <span className="text-sm font-medium text-gray-700">
-                                                    💬 Activer le chat
-                                                </span>
-                                                <p className="text-xs text-gray-500">
-                                                    Permettre aux joueurs de communiquer
-                                                </p>
-                                            </div>
-                                        </label>
-
-                                        {formData.base_game_type === GameType.QUANTUM && (
-                                            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                                                <label className="flex items-center space-x-3">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formData.quantum_enabled}
-                                                        onChange={(e) => handleInputChange('quantum_enabled', e.target.checked)}
-                                                        className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                                                    />
-                                                    <div>
-                                                        <span className="text-sm font-medium text-purple-700">
-                                                            ⚛️ Mode quantique avancé
-                                                        </span>
-                                                        <p className="text-xs text-purple-600">
-                                                            Superposition et intrication quantique
-                                                        </p>
-                                                    </div>
-                                                </label>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Partie privée */}
-                                    <div className="space-y-3">
-                                        <label className="flex items-center space-x-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.is_private}
-                                                onChange={(e) => handleInputChange('is_private', e.target.checked)}
-                                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                            />
-                                            <span className="text-sm font-medium text-gray-700">
-                                                🔒 Partie privée (avec mot de passe)
-                                            </span>
-                                        </label>
-
-                                        {formData.is_private && (
-                                            <div className="ml-7">
-                                                <input
-                                                    type="password"
-                                                    placeholder="Mot de passe de la partie"
-                                                    value={formData.password}
-                                                    onChange={(e) => handleInputChange('password', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    required={formData.is_private}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
+                            {/* Nombre de joueurs */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nombre maximum de joueurs
+                                </label>
+                                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                                    {[2, 4, 6, 8, 10, 12].map((count) => (
+                                        <button
+                                            key={count}
+                                            type="button"
+                                            onClick={() => handleInputChange('max_players', count)}
+                                            className={`p-3 rounded-lg border-2 text-center transition-all ${
+                                                formData.max_players === count
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-gray-200 hover:border-gray-300'
+                                            }`}
+                                        >
+                                            <div className="font-bold">{count}</div>
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
 
-                            {/* Toggle pour les options avancées */}
+                            {/* Options */}
+                            <div className="space-y-4">
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="allow_spectators"
+                                        checked={formData.allow_spectators}
+                                        onChange={(e) => handleInputChange('allow_spectators', e.target.checked)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <label htmlFor="allow_spectators" className="ml-2 text-sm text-gray-700">
+                                        Autoriser les spectateurs (peuvent regarder sans jouer)
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="enable_chat"
+                                        checked={formData.enable_chat}
+                                        onChange={(e) => handleInputChange('enable_chat', e.target.checked)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <label htmlFor="enable_chat" className="ml-2 text-sm text-gray-700">
+                                        Activer le chat entre joueurs
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="items_enabled"
+                                        checked={formData.items_enabled || true}
+                                        onChange={(e) => handleInputChange('items_enabled', e.target.checked)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <label htmlFor="items_enabled" className="ml-2 text-sm text-gray-700">
+                                        Activer les objets bonus/malus (recommandé pour le multijoueur)
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="is_private"
+                                        checked={formData.is_private}
+                                        onChange={(e) => handleInputChange('is_private', e.target.checked)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <label htmlFor="is_private" className="ml-2 text-sm text-gray-700">
+                                        Salon privé (requis mot de passe)
+                                    </label>
+                                </div>
+
+                                {formData.is_private && (
+                                    <div className="ml-6">
+                                        <input
+                                            type="password"
+                                            value={formData.password}
+                                            onChange={(e) => handleInputChange('password', e.target.value)}
+                                            placeholder="Mot de passe du salon"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            required={formData.is_private}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Options avancées */}
                             {!quickMode && (
-                                <div className="text-center">
+                                <div className="space-y-4">
                                     <button
                                         type="button"
                                         onClick={() => setShowAdvanced(!showAdvanced)}
-                                        className="text-sm text-blue-600 hover:text-blue-700 flex items-center mx-auto space-x-2"
+                                        className="flex items-center justify-between w-full p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
                                     >
-                                        <span>{showAdvanced ? 'Masquer' : 'Afficher'} les options avancées</span>
+                                        <span className="font-medium text-gray-700">
+                                            {showAdvanced ? 'Masquer' : 'Afficher'} les options avancées
+                                        </span>
                                         <span className={`transform transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>
                                             ▼
                                         </span>
@@ -443,9 +489,11 @@ export const MultiplayerGameCreation: React.FC = () => {
                                     <div>📊 Difficulté : {difficulties.find(d => d.value === formData.difficulty)?.label}</div>
                                     <div>🎨 Couleurs : {selectedDifficulty.colors} disponibles</div>
                                     <div>📍 Positions : {selectedDifficulty.length} à deviner</div>
+                                    <div>🔢 Masterminds : {formData.total_masterminds} à résoudre</div>
                                     <div>👥 Joueurs max : {formData.max_players}</div>
                                     <div>👁️ Spectateurs {formData.allow_spectators ? 'autorisés' : 'interdits'}</div>
                                     <div>💬 Chat {formData.enable_chat ? 'activé' : 'désactivé'}</div>
+                                    <div>🎁 Objets {formData.items_enabled ? 'activés' : 'désactivés'}</div>
                                     <div>🔒 Salon {formData.is_private ? 'privé' : 'public'}</div>
                                     {formData.quantum_enabled && <div>⚛️ Mode quantique activé</div>}
                                 </div>
@@ -487,6 +535,8 @@ export const MultiplayerGameCreation: React.FC = () => {
                             <li>• <strong>Mode Quantique</strong> : Avec superposition et intrication quantique</li>
                             <li>• <strong>Mode Rapidité</strong> : Parties chronométrées pour plus d'intensité</li>
                             <li>• <strong>Mode Précision</strong> : Minimisez les tentatives pour maximiser le score</li>
+                            <li>• <strong>Masterminds multiples</strong> : Chaque joueur résout ses propres masterminds. Le premier à tous les terminer gagne !</li>
+                            <li>• <strong>Objets bonus/malus</strong> : Obtenez des objets à chaque mastermind complété pour aider ou gêner vos adversaires</li>
                             <li>• Les spectateurs peuvent regarder sans participer</li>
                             <li>• Le chat permet aux joueurs de communiquer pendant la partie</li>
                             <li>• Les salons privés ne sont visibles que par ceux qui ont le mot de passe</li>

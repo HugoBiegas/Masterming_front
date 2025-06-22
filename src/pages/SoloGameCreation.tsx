@@ -62,16 +62,16 @@ export const SoloGameCreation: React.FC = () => {
 
             showSuccess('✅ Partie créée avec succès !');
 
-            // Navigation avec gestion d'erreur
+            // CORRECTION: Navigation vers la bonne route solo
             try {
-                navigate(`/game/${gameId}`, {
+                navigate(`/solo/game/${gameId}`, {
                     replace: true, // Remplace l'entrée d'historique actuelle
                     state: { fromCreation: true } // État pour identifier la source
                 });
             } catch (navigationError) {
                 console.error('Erreur de navigation:', navigationError);
                 // Fallback : utiliser window.location si navigate échoue
-                window.location.href = `/game/${gameId}`;
+                window.location.href = `/solo/game/${gameId}`;
             }
 
         } catch (err: any) {
@@ -148,11 +148,16 @@ export const SoloGameCreation: React.FC = () => {
                                         className={`p-4 border-2 rounded-lg text-left transition-all disabled:opacity-50 ${
                                             formData.game_type === type
                                                 ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-300 hover:border-gray-400'
+                                                : 'border-gray-200 hover:border-gray-300'
                                         }`}
                                     >
-                                        <h3 className="font-medium">{GAME_TYPE_INFO[type].name}</h3>
-                                        <p className="text-sm text-gray-600">{GAME_TYPE_INFO[type].description}</p>
+                                        <div className="flex items-center space-x-3">
+                                            <span className="text-2xl">{GAME_TYPE_INFO[type].icon}</span>
+                                            <div>
+                                                <h3 className="font-medium text-gray-800">{GAME_TYPE_INFO[type].name}</h3>
+                                                <p className="text-sm text-gray-600">{GAME_TYPE_INFO[type].description}</p>
+                                            </div>
+                                        </div>
                                     </button>
                                 ))}
                             </div>
@@ -161,37 +166,47 @@ export const SoloGameCreation: React.FC = () => {
                         {/* Difficulté */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Niveau de difficulté
+                                Difficulté
                             </label>
-                            <div className="space-y-2">
-                                {Object.entries(DIFFICULTY_CONFIGS).map(([difficulty, config]) => (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {Object.values(Difficulty).map((difficulty) => (
                                     <button
                                         key={difficulty}
-                                        onClick={() => setFormData(prev => ({ ...prev, difficulty: difficulty as Difficulty }))}
+                                        onClick={() => setFormData(prev => ({ ...prev, difficulty }))}
                                         disabled={loading}
-                                        className={`w-full p-4 border-2 rounded-lg text-left transition-all disabled:opacity-50 ${
+                                        className={`p-4 border-2 rounded-lg text-left transition-all disabled:opacity-50 ${
                                             formData.difficulty === difficulty
                                                 ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-300 hover:border-gray-400'
+                                                : 'border-gray-200 hover:border-gray-300'
                                         }`}
                                     >
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h3 className="font-medium capitalize">{difficulty}</h3>
-                                                <p className="text-sm text-gray-600">{config.description}</p>
-                                            </div>
-                                            <div className="text-sm text-gray-500">
-                                                {config.colors} couleurs • {config.length} positions • {config.attempts} tentatives
-                                            </div>
-                                        </div>
+                                        <h3 className="font-medium text-gray-800 capitalize">{difficulty}</h3>
+                                        <p className="text-sm text-gray-600">
+                                            {DIFFICULTY_CONFIGS[difficulty].colors} couleurs, {DIFFICULTY_CONFIGS[difficulty].length} positions, {DIFFICULTY_CONFIGS[difficulty].attempts} tentatives
+                                        </p>
                                     </button>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Résumé de la configuration */}
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                            <h3 className="font-medium mb-2">Configuration de la partie :</h3>
+                        {/* Mode quantique */}
+                        <div className="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                id="quantum_enabled"
+                                checked={formData.quantum_enabled || false}
+                                onChange={(e) => setFormData(prev => ({ ...prev, quantum_enabled: e.target.checked }))}
+                                disabled={loading}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                            />
+                            <label htmlFor="quantum_enabled" className="text-sm font-medium text-gray-700">
+                                Activer les fonctionnalités quantiques ⚛️
+                            </label>
+                        </div>
+
+                        {/* Résumé */}
+                        <div className="bg-gray-50 rounded-lg p-4">
+                            <h4 className="font-medium text-gray-800 mb-2">📋 Résumé de la partie</h4>
                             <ul className="text-sm text-gray-600 space-y-1">
                                 <li>• Type : {formData.game_type ? GAME_TYPE_INFO[formData.game_type].name : ''}</li>
                                 <li>• Difficulté : {formData.difficulty}</li>
