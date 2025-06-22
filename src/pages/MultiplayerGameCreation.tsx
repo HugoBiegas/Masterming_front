@@ -5,9 +5,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useNotification } from '@/contexts/NotificationContext';
 import { multiplayerService } from '@/services/multiplayer';
 import {
-    CreateRoomRequest,
-    Difficulty,
-    MultiplayerGameType
+    Difficulty
 } from '@/types/multiplayer';
 import { GameType } from '@/types/game';
 import { DIFFICULTY_CONFIGS, GAME_TYPE_INFO } from '@/utils/constants';
@@ -53,22 +51,6 @@ export const MultiplayerGameCreation: React.FC = () => {
 
     const [isCreating, setIsCreating] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(!quickMode);
-
-    // NOUVEAU: Fonction de mapping GameType vers MultiplayerGameType
-    const mapGameTypeToMultiplayerType = (gameType: GameType): MultiplayerGameType => {
-        // Pour l'instant, tous les types de jeu solo correspondent au mode multi-mastermind
-        // où chaque joueur résout ses propres masterminds
-        switch (gameType) {
-            case GameType.CLASSIC:
-            case GameType.SPEED:
-            case GameType.PRECISION:
-            case GameType.QUANTUM:
-                return MultiplayerGameType.MULTI_MASTERMIND;
-            default:
-                return MultiplayerGameType.MULTI_MASTERMIND;
-        }
-    };
-
     const handleInputChange = (field: keyof EnhancedCreateRoomRequest, value: any) => {
         setFormData(prev => {
             const newData = { ...prev, [field]: value };
@@ -104,7 +86,7 @@ export const MultiplayerGameCreation: React.FC = () => {
         try {
             const requestData = {
                 name: formData.name,
-                game_type: mapGameTypeToMultiplayerType(formData.base_game_type), // CORRECTION: Mapper vers MultiplayerGameType
+                game_type: formData.base_game_type, // CORRECTION: Mapper vers MultiplayerGameType
                 difficulty: formData.difficulty,
                 max_players: formData.max_players,
                 is_private: formData.is_private,
@@ -123,7 +105,7 @@ export const MultiplayerGameCreation: React.FC = () => {
             if (room) {
                 showSuccess('Salon créé avec succès !');
                 // CORRECTION: Utiliser la bonne route pour le lobby multijoueur
-                navigate(`/multiplayer/lobby/${room.room_code}`, {
+                navigate(`/multiplayer/rooms/${room.room_code}`, {
                     state: { room, fromCreation: true }
                 });
             }
@@ -435,18 +417,6 @@ export const MultiplayerGameCreation: React.FC = () => {
                                     </label>
                                 </div>
 
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="is_private"
-                                        checked={formData.is_private}
-                                        onChange={(e) => handleInputChange('is_private', e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                    />
-                                    <label htmlFor="is_private" className="ml-2 text-sm text-gray-700">
-                                        Salon privé (requis mot de passe)
-                                    </label>
-                                </div>
 
                                 {formData.is_private && (
                                     <div className="ml-6">

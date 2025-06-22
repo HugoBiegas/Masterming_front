@@ -10,12 +10,24 @@ import {
     LobbyListResponse,
     MultiplayerApiResponse
 } from '@/types/multiplayer';
-import { AttemptRequest, AttemptResult } from '@/types/game';
+import {AttemptRequest, AttemptResult, GameType} from '@/types/game';
 
 export class MultiplayerService {
     // ========== ROOM MANAGEMENT ==========
 
-    async createRoom(request: CreateRoomRequest): Promise<GameRoom> {
+    async createRoom(request: {
+        name: string;
+        game_type: GameType;
+        difficulty: Difficulty;
+        max_players: number;
+        is_private: boolean;
+        password: string;
+        allow_spectators: boolean;
+        enable_chat: boolean;
+        quantum_enabled: boolean;
+        total_masterminds: number;
+        items_enabled: boolean
+    }): Promise<GameRoom> {
         console.log('🌐 Creating multiplayer room:', request);
 
         const response = await apiService.post<MultiplayerApiResponse<GameRoom>>(

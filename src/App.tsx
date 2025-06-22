@@ -208,7 +208,7 @@ const AppRoutes: React.FC = () => {
             />
 
             <Route
-                path="/multiplayer/lobby/:roomCode"
+                path="/multiplayer/rooms/:roomCode"
                 element={
                     <ProtectedRoute>
                         <MultiplayerLobby />
@@ -217,7 +217,7 @@ const AppRoutes: React.FC = () => {
             />
 
             <Route
-                path="/multiplayer/game/:roomCode"
+                path="/multiplayer/rooms/:roomCode"
                 element={
                     <ProtectedRoute>
                         <MultiplayerGame />
@@ -227,7 +227,7 @@ const AppRoutes: React.FC = () => {
 
             {/* Route pour les résultats multijoueur - CORRIGÉE */}
             <Route
-                path="/multiplayer/results/:gameId"
+                path="/multiplayer/rooms/:gameId/results"
                 element={
                     <ProtectedRoute>
                         <MultiplayerResultsPage />
@@ -237,7 +237,7 @@ const AppRoutes: React.FC = () => {
 
             {/* Route pour rejoindre par code de room - CORRIGÉE */}
             <Route
-                path="/multiplayer/join/:roomCode"
+                path="/multiplayer/rooms/:roomCode/join"
                 element={
                     <ProtectedRoute>
                         <JoinByRoomCode />

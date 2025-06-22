@@ -119,7 +119,7 @@ export const MultiplayerGame: React.FC = () => {
     // Redirection si la partie est terminée
     useEffect(() => {
         if (isGameFinished) {
-            navigate(`/multiplayer/results/${gameId}`);
+            navigate(`/multiplayer/rooms/${gameId}/results`);
         }
     }, [isGameFinished, gameId, navigate]);
 

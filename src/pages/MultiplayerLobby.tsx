@@ -38,7 +38,7 @@ export const MultiplayerLobby: React.FC = () => {
     // Redirection si la partie a commencé
     useEffect(() => {
         if (isGameActive) {
-            navigate(`/multiplayer/game/${gameId}`);
+            navigate(`/multiplayer/rooms/${gameId}`);
         }
     }, [isGameActive, gameId, navigate]);
 
