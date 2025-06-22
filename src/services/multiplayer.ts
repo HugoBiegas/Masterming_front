@@ -203,7 +203,41 @@ export class MultiplayerService {
         }
 
         const status = error.response.status;
-        const detail = error.response.data?.detail || error.response.data?.message;
+        const data = error.response.data;
+
+        // ✅ CORRECTION: Gestion spécifique des erreurs de validation (422)
+        if (status === 422) {
+            if (data.detail && Array.isArray(data.detail)) {
+                // Erreurs de validation Pydantic - extraire les messages
+                const validationErrors = data.detail.map((error: any) => {
+                    if (typeof error === 'string') {
+                        return error;
+                    }
+                    if (error.msg) {
+                        const location = error.loc ? error.loc.join('.') : 'champ';
+                        return `${location}: ${error.msg}`;
+                    }
+                    return 'Erreur de validation';
+                }).join(', ');
+
+                return `Erreur de validation: ${validationErrors}`;
+            } else if (typeof data.detail === 'string') {
+                return data.detail;
+            } else {
+                return 'Données invalides';
+            }
+        }
+
+        // ✅ CORRECTION: Extraction sécurisée du message d'erreur
+        let detail = '';
+        if (typeof data.detail === 'string') {
+            detail = data.detail;
+        } else if (typeof data.message === 'string') {
+            detail = data.message;
+        } else if (data.detail && typeof data.detail === 'object') {
+            // Si detail est un objet, essayer d'extraire un message
+            detail = data.detail.message || data.detail.msg || JSON.stringify(data.detail);
+        }
 
         switch (status) {
             case 400:
@@ -243,6 +277,7 @@ export class MultiplayerService {
                 return detail || 'Erreur inattendue';
         }
     }
+
 }
 
 export const multiplayerService = new MultiplayerService();

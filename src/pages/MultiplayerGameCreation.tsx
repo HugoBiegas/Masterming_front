@@ -74,30 +74,62 @@ export const MultiplayerGameCreation: React.FC = () => {
         setIsCreating(true);
 
         try {
-            // Préparation des données pour l'API (format backend)
-            const requestData: CreateRoomRequest = {
+            const requestData = {
                 name: formData.name,
                 game_type: formData.base_game_type, // Utiliser le type de base
                 difficulty: formData.difficulty,
                 max_players: formData.max_players,
                 is_private: formData.is_private,
-                password: formData.password,
+                password: formData.password || "", // Assurer que ce n'est jamais undefined
                 allow_spectators: formData.allow_spectators,
                 enable_chat: formData.enable_chat,
                 quantum_enabled: formData.quantum_enabled
             };
 
+            console.log('🌐 Creating multiplayer room with data:', requestData);
+
             const room = await multiplayerService.createRoom(requestData);
 
             if (room) {
                 showSuccess('Salon créé avec succès !');
-                navigate(`/multiplayer/lobby/${room.id}`);
-            } else {
-                showError('Erreur lors de la création du salon');
+                navigate(`/multiplayer/room/${room.room_code}`, {
+                    state: { room, fromCreation: true }
+                });
             }
-        } catch (error: any) {
-            console.error('Erreur création partie:', error);
-            showError(error.response?.data?.detail || 'Erreur lors de la création de la partie');
+        } catch (err: any) {
+            console.error('❌ Erreur création partie:', err);
+
+            // ✅ CORRECTION: Gestion d'erreur robuste avec extraction du message
+            let errorMessage = 'Erreur lors de la création de la partie';
+
+            if (err.response) {
+                const { status, data } = err.response;
+
+                if (status === 422) {
+                    // Erreur de validation Pydantic
+                    if (data.detail && Array.isArray(data.detail)) {
+                        // Extraire les messages d'erreur de validation
+                        const validationErrors = data.detail.map((error: any) => {
+                            if (error.msg) {
+                                return `${error.loc ? error.loc.join('.') + ': ' : ''}${error.msg}`;
+                            }
+                            return String(error);
+                        }).join(', ');
+                        errorMessage = `Erreur de validation: ${validationErrors}`;
+                    } else if (typeof data.detail === 'string') {
+                        errorMessage = data.detail;
+                    } else {
+                        errorMessage = 'Données invalides pour la création de partie';
+                    }
+                } else {
+                    // Utiliser la méthode existante pour les autres erreurs
+                    errorMessage = multiplayerService.handleMultiplayerError(err, 'createRoom');
+                }
+            } else if (err.message) {
+                errorMessage = err.message;
+            }
+
+            showError(errorMessage);
         } finally {
             setIsCreating(false);
         }

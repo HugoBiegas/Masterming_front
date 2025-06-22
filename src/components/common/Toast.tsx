@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 
 interface ToastProps {
-    message: string;
+    message: string | any;
     type: 'success' | 'error' | 'warning' | 'info';
     isVisible: boolean;
     onClose: () => void;

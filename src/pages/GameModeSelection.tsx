@@ -71,7 +71,7 @@ const gameModes: ExtendedGameMode[] = [
     },
     {
         id: 'quantum',
-        name: 'Mode Quantique',
+        name: 'Mode Quantique Avancé',
         description: 'Exploitez la superposition et l\'intrication quantique',
         icon: '⚛️',
         route: '/quantum',
