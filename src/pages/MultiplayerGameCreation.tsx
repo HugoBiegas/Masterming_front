@@ -355,46 +355,6 @@ export const MultiplayerGameCreation: React.FC = () => {
 
                             {/* Options */}
                             <div className="space-y-4">
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="allow_spectators"
-                                        checked={formData.allow_spectators}
-                                        onChange={(e) => handleInputChange('allow_spectators', e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                    />
-                                    <label htmlFor="allow_spectators" className="ml-2 text-sm text-gray-700">
-                                        Autoriser les spectateurs (peuvent regarder sans jouer)
-                                    </label>
-                                </div>
-
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="enable_chat"
-                                        checked={formData.enable_chat}
-                                        onChange={(e) => handleInputChange('enable_chat', e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                    />
-                                    <label htmlFor="enable_chat" className="ml-2 text-sm text-gray-700">
-                                        Activer le chat entre joueurs
-                                    </label>
-                                </div>
-
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="items_enabled"
-                                        checked={formData.items_enabled || true}
-                                        onChange={(e) => handleInputChange('items_enabled', e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                    />
-                                    <label htmlFor="items_enabled" className="ml-2 text-sm text-gray-700">
-                                        Activer les objets bonus/malus (recommandé pour le multijoueur)
-                                    </label>
-                                </div>
-
-
                                 {formData.is_private && (
                                     <div className="ml-6">
                                         <input
