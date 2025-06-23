@@ -48,12 +48,21 @@ export const MultiplayerGameCreation: React.FC = () => {
     const [showAdvanced, setShowAdvanced] = useState(!quickMode);
 
     const handleInputChange = useCallback((field: keyof EnhancedCreateRoomRequest, value: any) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value,
-            ...(field === 'is_private' && { is_public: !value }),
-            ...(field === 'is_public' && { is_private: !value })
-        }));
+        setFormData(prev => {
+            const newData = {
+                ...prev,
+                [field]: value,
+                ...(field === 'is_private' && { is_public: !value }),
+                ...(field === 'is_public' && { is_private: !value })
+            };
+
+            // AJOUT: Activation automatique mode quantique
+            if (field === 'game_type' && value === GameType.QUANTUM) {
+                newData.quantum_enabled = true;
+            }
+
+            return newData;
+        });
     }, []);
 
     const handleSubmit = useCallback(async (e: React.FormEvent) => {
