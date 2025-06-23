@@ -20,7 +20,7 @@ export const MultiplayerGameCreation: React.FC = () => {
     // Détection du mode rapide depuis la navigation
     const quickMode = location.state?.quickMode === true;
 
-    // CORRECTION: Utiliser EnhancedCreateRoomRequest avec toutes les propriétés
+    // Utiliser EnhancedCreateRoomRequest existant du projet
     const [formData, setFormData] = useState<EnhancedCreateRoomRequest>({
         name: quickMode ? 'Partie Rapide' : 'Ma Partie',
         game_type: GameType.CLASSIC,
@@ -28,7 +28,7 @@ export const MultiplayerGameCreation: React.FC = () => {
         difficulty: Difficulty.MEDIUM,
         max_players: quickMode ? 4 : 2,
 
-        // AJOUT: Propriétés manquantes avec valeurs par défaut
+        // Propriétés existantes du projet
         combination_length: 4,
         available_colors: 6,
         max_attempts: 10,
@@ -56,9 +56,13 @@ export const MultiplayerGameCreation: React.FC = () => {
                 ...(field === 'is_public' && { is_private: !value })
             };
 
-            // AJOUT: Activation automatique mode quantique
-            if (field === 'game_type' && value === GameType.QUANTUM) {
+            // Activation automatique mode quantique
+            if (field === 'base_game_type' && value === GameType.QUANTUM) {
                 newData.quantum_enabled = true;
+                newData.game_type = GameType.QUANTUM;
+            } else if (field === 'base_game_type' && value !== GameType.QUANTUM) {
+                newData.quantum_enabled = false;
+                newData.game_type = value;
             }
 
             return newData;
@@ -83,7 +87,7 @@ export const MultiplayerGameCreation: React.FC = () => {
                 // Ce n'est pas bloquant, on continue
             }
 
-            // CORRECTION: Convertir EnhancedCreateRoomRequest vers CreateRoomRequest
+            // Convertir avec la fonction existante du projet
             const createRequest = convertToCreateRoomRequest(formData);
 
             console.log('🔄 Requête convertie:', createRequest);
@@ -93,7 +97,7 @@ export const MultiplayerGameCreation: React.FC = () => {
             if (room?.room_code) {
                 showSuccess('🎉 Partie créée avec succès !');
 
-                // Navigation vers la route lobby avec roomCode
+                // Navigation vers le lobby
                 navigate(`/multiplayer/rooms/${room.room_code}/lobby`, {
                     state: { room, fromCreation: true }
                 });
@@ -134,7 +138,7 @@ export const MultiplayerGameCreation: React.FC = () => {
         }
     }, [formData, navigate, showError, showSuccess, showWarning]);
 
-    // Configurations des difficultés (même que le solo)
+    // Configurations des difficultés utilisant les types existants
     const difficulties = [
         {
             value: Difficulty.EASY,
@@ -162,7 +166,7 @@ export const MultiplayerGameCreation: React.FC = () => {
         }
     ];
 
-    // Types de partie (même que le solo)
+    // Types de partie utilisant GAME_TYPE_INFO existant
     const gameTypes = [
         {
             value: GameType.CLASSIC,
@@ -198,7 +202,10 @@ export const MultiplayerGameCreation: React.FC = () => {
         }
     ];
 
-    const selectedDifficulty = formData.difficulty ? DIFFICULTY_CONFIGS[formData.difficulty] : DIFFICULTY_CONFIGS[Difficulty.MEDIUM];
+    // Gestion sécurisée de la configuration de difficulté
+    const selectedDifficulty = formData.difficulty && DIFFICULTY_CONFIGS[formData.difficulty] ?
+        DIFFICULTY_CONFIGS[formData.difficulty] :
+        DIFFICULTY_CONFIGS[Difficulty.MEDIUM];
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -222,7 +229,7 @@ export const MultiplayerGameCreation: React.FC = () => {
                     <div className="bg-white rounded-lg shadow-lg p-6">
                         <form onSubmit={handleSubmit} className="space-y-6">
 
-                            {/* NOUVEAU: Type de partie (harmonisé avec le solo) */}
+                            {/* Type de partie */}
                             <div className="space-y-4">
                                 <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">
                                     Type de Partie
@@ -256,6 +263,21 @@ export const MultiplayerGameCreation: React.FC = () => {
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* Affichage du statut mode quantique */}
+                                {formData.base_game_type === GameType.QUANTUM && (
+                                    <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                                        <div className="flex items-center space-x-2">
+                                            <span className="text-purple-600">⚛️</span>
+                                            <span className="text-sm font-medium text-purple-800">
+                                                Mode quantique activé automatiquement
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-purple-600 mt-1">
+                                            Superposition et intrication quantique sont maintenant disponibles
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Nom du salon */}
@@ -303,7 +325,7 @@ export const MultiplayerGameCreation: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* NOUVEAU: Nombre de masterminds */}
+                            {/* Configuration Multijoueur */}
                             <div className="space-y-4">
                                 <h2 className="text-xl font-semibold text-gray-800 border-b pb-2">
                                     Configuration Multijoueur
@@ -362,28 +384,12 @@ export const MultiplayerGameCreation: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Options */}
-                            <div className="space-y-4">
-                                {formData.is_private && (
-                                    <div className="ml-6">
-                                        <input
-                                            type="password"
-                                            value={formData.password}
-                                            onChange={(e) => handleInputChange('password', e.target.value)}
-                                            placeholder="Mot de passe du salon"
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            required={formData.is_private}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
                             {/* Résumé de la configuration */}
                             <div className="bg-gray-50 rounded-lg p-4">
                                 <h4 className="font-medium text-gray-800 mb-2">📋 Résumé du salon</h4>
                                 <div className="text-sm text-gray-600 space-y-1">
                                     <div>📝 Nom : {formData.name}</div>
-                                    <div>🎯 Type : {GAME_TYPE_INFO[formData.base_game_type].name}</div>
+                                    <div>🎯 Type : {gameTypes.find(t => t.value === formData.base_game_type)?.name || 'Classique'}</div>
                                     <div>📊 Difficulté : {difficulties.find(d => d.value === formData.difficulty)?.label}</div>
                                     <div>🎨 Couleurs : {selectedDifficulty.colors} disponibles</div>
                                     <div>📍 Positions : {selectedDifficulty.length} à deviner</div>

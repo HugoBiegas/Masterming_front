@@ -17,7 +17,7 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
         colors: 4,
         length: 3,
         attempts: 15,
-        description: "Parfait pour débuter - 4 couleurs, 3 positions"
+        description: "Parfait pour débuter - 4 couleurs, 3 positions",
     },
     [Difficulty.MEDIUM]: {
         colors: 6,

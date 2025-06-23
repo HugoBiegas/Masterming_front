@@ -10,7 +10,52 @@ import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { multiplayerService } from '@/services/multiplayer';
-import { MULTIPLAYER_DIFFICULTY_CONFIGS, ITEM_CONFIGS } from '@/utils/multiplayerConstants';
+
+// FIX: Import des bonnes constantes
+import { DIFFICULTY_CONFIGS } from '@/utils/constants';
+
+// FIX: Interface corrigée pour les configurations multijoueur
+const MULTIPLAYER_DIFFICULTY_CONFIGS = {
+    easy: { ...DIFFICULTY_CONFIGS.easy, timeLimit: 300 },
+    medium: { ...DIFFICULTY_CONFIGS.medium, timeLimit: 600 },
+    hard: { ...DIFFICULTY_CONFIGS.hard, timeLimit: 900 },
+    expert: { ...DIFFICULTY_CONFIGS.expert, timeLimit: 1200 },
+    quantum: { ...DIFFICULTY_CONFIGS.expert, timeLimit: 1500 }
+};
+
+// FIX: Interface pour les objets de jeu
+const ITEM_CONFIGS = {
+    extra_hint: {
+        name: 'Indice supplémentaire',
+        description: 'Révèle une position aléatoire',
+        icon: '💡',
+        rarity: 'common' as const
+    },
+    time_bonus: {
+        name: 'Bonus temps',
+        description: 'Gagne 30 secondes',
+        icon: '⏰',
+        rarity: 'common' as const
+    },
+    skip_mastermind: {
+        name: 'Passer mastermind',
+        description: 'Passe au mastermind suivant',
+        icon: '⏭️',
+        rarity: 'epic' as const
+    },
+    double_score: {
+        name: 'Score x2',
+        description: 'Double les points du prochain mastermind',
+        icon: '💎',
+        rarity: 'rare' as const
+    },
+    freeze_time: {
+        name: 'Geler temps',
+        description: 'Gèle le temps des adversaires',
+        icon: '❄️',
+        rarity: 'legendary' as const
+    }
+};
 
 // Interface pour les messages de chat
 interface ChatMessage {
@@ -29,18 +74,21 @@ export const MultiplayerLobby: React.FC = () => {
     const { user } = useAuth();
     const { showSuccess, showError, showWarning } = useNotification();
 
+    // FIX: Utiliser les bonnes propriétés du hook useMultiplayer
     const {
         currentRoom,
         players,
         loading,
         error,
-        isHost,
-        canStart,
         isGameActive,
         startGame,
         leaveRoom,
         refreshRoom
     } = useMultiplayer(roomCode);
+
+    // FIX: Calculer isHost et canStart à partir des données disponibles
+    const isHost = currentRoom?.creator?.id === user?.id;
+    const canStart = players.length >= 2 && players.length <= (currentRoom?.max_players || 8);
 
     const [isStarting, setIsStarting] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
@@ -176,8 +224,8 @@ export const MultiplayerLobby: React.FC = () => {
     const getGameConfigInfo = () => {
         if (!currentRoom) return null;
 
-        const difficulty = currentRoom.difficulty;
-        const difficultyConfig = MULTIPLAYER_DIFFICULTY_CONFIGS[difficulty as keyof typeof MULTIPLAYER_DIFFICULTY_CONFIGS];
+        const difficulty = currentRoom.difficulty as keyof typeof MULTIPLAYER_DIFFICULTY_CONFIGS;
+        const difficultyConfig = MULTIPLAYER_DIFFICULTY_CONFIGS[difficulty] || MULTIPLAYER_DIFFICULTY_CONFIGS.medium;
 
         return {
             difficultyConfig,
@@ -324,11 +372,11 @@ export const MultiplayerLobby: React.FC = () => {
                                     <div className="text-sm text-gray-600">Couleurs</div>
                                 </div>
                                 <div className="text-center p-3 bg-green-50 rounded-lg">
-                                    <div className="text-2xl font-bold text-green-600">{configInfo?.difficultyConfig?.pegs || 8}</div>
+                                    <div className="text-2xl font-bold text-green-600">{configInfo?.difficultyConfig?.length || 4}</div>
                                     <div className="text-sm text-gray-600">Positions</div>
                                 </div>
                                 <div className="text-center p-3 bg-orange-50 rounded-lg">
-                                    <div className="text-2xl font-bold text-orange-600">{configInfo?.difficultyConfig?.maxAttempts || 12}</div>
+                                    <div className="text-2xl font-bold text-orange-600">{configInfo?.difficultyConfig?.attempts || 12}</div>
                                     <div className="text-sm text-gray-600">Tentatives max</div>
                                 </div>
                                 <div className="text-center p-3 bg-purple-50 rounded-lg">
@@ -350,7 +398,7 @@ export const MultiplayerLobby: React.FC = () => {
                                                 <div>
                                                     <div className="font-medium text-gray-800">Type de partie</div>
                                                     <div className="text-sm text-gray-600">
-                                                        {currentRoom.game_type_display || 'Multi Mastermind'}
+                                                        {currentRoom.game_type || 'Multi Mastermind'}
                                                     </div>
                                                 </div>
                                             </div>
@@ -449,8 +497,9 @@ export const MultiplayerLobby: React.FC = () => {
                             </h2>
                             <PlayersList
                                 players={players}
-                                showItems={configInfo?.itemsEnabled || false}
-                                creatorId={''}
+                                currentUserId={user?.id}
+                                creatorId={currentRoom?.creator?.id}
+                                showProgress={false}
                             />
                         </div>
 
@@ -502,49 +551,43 @@ export const MultiplayerLobby: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* FIX: Propriétés corrigées pour ChatBox */}
                         <ChatBox
-                            gameId={currentRoom.id}
                             messages={chatMessages}
                             onSendMessage={handleSendMessage}
-                            disabled={!isWebSocketConnected}
-                            maxHeight="400px"
-                            showTimestamps={true}
-                            placeholder={isWebSocketConnected ? "Tapez votre message..." : "Chat indisponible"}
                         />
                     </div>
                 </div>
             </div>
 
             {/* Modal de confirmation de sortie */}
-            {showLeaveModal && (
-                <Modal
-                    isOpen={showLeaveModal}
-                    onClose={() => setShowLeaveModal(false)}
-                    title="Quitter le salon"
-                >
-                    <div className="space-y-4">
-                        <p className="text-gray-700">
-                            Êtes-vous sûr de vouloir quitter ce salon ? {isHost && 'En tant qu\'hôte, votre départ fermera le salon pour tous les joueurs.'}
-                        </p>
+            <Modal
+                isOpen={showLeaveModal}
+                onClose={() => setShowLeaveModal(false)}
+                title="Quitter le salon"
+            >
+                <div className="space-y-4">
+                    <p className="text-gray-700">
+                        Êtes-vous sûr de vouloir quitter ce salon ? {isHost && 'En tant qu\'hôte, votre départ fermera le salon pour tous les joueurs.'}
+                    </p>
 
-                        <div className="flex space-x-3">
-                            <button
-                                onClick={() => setShowLeaveModal(false)}
-                                className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                onClick={handleLeaveRoom}
-                                disabled={isLeaving}
-                                className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-                            >
-                                {isLeaving ? 'Sortie...' : 'Quitter'}
-                            </button>
-                        </div>
+                    <div className="flex space-x-3">
+                        <button
+                            onClick={() => setShowLeaveModal(false)}
+                            className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            onClick={handleLeaveRoom}
+                            disabled={isLeaving}
+                            className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                        >
+                            {isLeaving ? 'Sortie...' : 'Quitter'}
+                        </button>
                     </div>
-                </Modal>
-            )}
+                </div>
+            </Modal>
         </div>
     );
 };
