@@ -8,6 +8,7 @@ export enum MultiplayerGameType {
     TOURNAMENT = 'tournament'
 }
 
+
 export enum ItemType {
     // Objets bonus pour soi
     EXTRA_HINT = 'extra_hint',
