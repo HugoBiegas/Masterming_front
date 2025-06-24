@@ -1,56 +1,348 @@
-// src/hooks/useWebSocket.ts - CORRECTION pour retourner chatMessages
+// ===============================================
+// src/hooks/useWebSocket.ts - VERSION COMPLÈTE CORRIGÉE
+// Protection anti-boucle infinie + Chat intégré
+// ===============================================
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { MultiplayerWebSocketService } from "@/services/websocket";
 import { ChatMessage } from "@/hooks/useWebSocketChat";
 
-export const useWebSocket = (roomCode?: string) => {
+// ===============================================
+// TYPES ET INTERFACES
+// ===============================================
+
+export interface WebSocketStats {
+    messagesReceived: number;
+    messagesSent: number;
+    reconnectCount: number;
+    uptime: number;
+    lastHeartbeat: number | null;
+    connectionAttempts: number;
+}
+
+export interface WebSocketHookReturn {
+    // État de connexion
+    isConnected: boolean;
+    isConnecting: boolean;
+    connectionState: string;
+
+    // Chat
+    chatMessages: ChatMessage[];
+    sendChatMessage: (message: string) => boolean;
+    clearChatMessages: () => void;
+
+    // Actions de connexion
+    connect: () => Promise<void>;
+    disconnect: () => void;
+    forceReconnect: () => Promise<void>;
+
+    // Communication
+    sendMessage: (message: any) => boolean;
+    subscribe: (event: string, handler: (data: any) => void) => () => void;
+
+    // Utilitaires
+    wsService: MultiplayerWebSocketService | null;
+    stats: WebSocketStats;
+
+    // Debug
+    getConnectionInfo: () => any;
+}
+
+// ===============================================
+// CONFIGURATION
+// ===============================================
+
+const WEBSOCKET_CONFIG = {
+    MAX_RECONNECT_ATTEMPTS: 3,
+    RECONNECT_DELAY: 2000,
+    HEARTBEAT_INTERVAL: 30000,
+    STATUS_CHECK_INTERVAL: 5000,
+    CONNECTION_TIMEOUT: 10000,
+    CLEANUP_DELAY: 100
+};
+
+// ===============================================
+// HOOK PRINCIPAL
+// ===============================================
+
+export const useWebSocket = (roomCode?: string): WebSocketHookReturn => {
     const { user } = useAuth();
-    const { showError, showSuccess, showInfo } = useNotification();
+    const { showError, showSuccess, showInfo, showWarning } = useNotification();
+
+    // ===============================================
+    // ÉTATS
+    // ===============================================
 
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [connectionState, setConnectionState] = useState<string>('disconnected');
-
-    // CORRECTION: Toujours initialiser chatMessages comme un array
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
-    // Refs pour éviter les reconnexions multiples
+    // Stats de connexion
+    const [stats, setStats] = useState<WebSocketStats>({
+        messagesReceived: 0,
+        messagesSent: 0,
+        reconnectCount: 0,
+        uptime: 0,
+        lastHeartbeat: null,
+        connectionAttempts: 0
+    });
+
+    // ===============================================
+    // REFS POUR ÉVITER LES BOUCLES
+    // ===============================================
+
     const wsServiceRef = useRef<MultiplayerWebSocketService | null>(null);
     const connectionAttemptRef = useRef(false);
     const unmountedRef = useRef(false);
     const lastRoomCodeRef = useRef<string | undefined>(undefined);
+    const connectionStateRef = useRef<string>('disconnected');
+    const reconnectCountRef = useRef(0);
+    const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const uptimeStartRef = useRef<number | null>(null);
 
-    // CORRECTION: Fonction de nettoyage complète
+    // ===============================================
+    // FONCTIONS DE NETTOYAGE
+    // ===============================================
+
+    const clearTimeouts = useCallback(() => {
+        if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+        }
+
+        if (statusCheckIntervalRef.current) {
+            clearInterval(statusCheckIntervalRef.current);
+            statusCheckIntervalRef.current = null;
+        }
+    }, []);
+
     const cleanupConnection = useCallback(() => {
+        console.log('🧹 Nettoyage complet de la connexion WebSocket');
+
+        clearTimeouts();
+
         if (wsServiceRef.current) {
-            console.log('🧹 Cleaning up WebSocket connection');
-            wsServiceRef.current.disconnect();
+            try {
+                wsServiceRef.current.removeAllListeners(); // Éviter les événements fantômes
+                wsServiceRef.current.disconnect();
+            } catch (error) {
+                console.warn('Erreur lors de la déconnexion:', error);
+            }
             wsServiceRef.current = null;
         }
+
         connectionAttemptRef.current = false;
         setIsConnected(false);
         setIsConnecting(false);
-    }, []);
+        setConnectionState('disconnected');
+        connectionStateRef.current = 'disconnected';
 
-    // CORRECTION: Connexion avec protection contre les doublons
+        // Mettre à jour l'uptime final
+        if (uptimeStartRef.current) {
+            setStats(prev => ({
+                ...prev,
+                uptime: prev.uptime + (Date.now() - uptimeStartRef.current!)
+            }));
+            uptimeStartRef.current = null;
+        }
+    }, [clearTimeouts]);
+
+    // ===============================================
+    // VÉRIFICATION DU STATUT
+    // ===============================================
+
+    const forceConnectionStatusUpdate = useCallback(() => {
+        if (wsServiceRef.current?.isConnected && !isConnected) {
+            console.log('🔄 Correction statut WebSocket');
+            setIsConnected(true);
+            setConnectionState('connected');
+        }
+    }, [isConnected]);
+
+    const startStatusMonitoring = useCallback(() => {
+        if (statusCheckIntervalRef.current) {
+            clearInterval(statusCheckIntervalRef.current);
+        }
+
+        statusCheckIntervalRef.current = setInterval(() => {
+            if (!unmountedRef.current) {
+                forceConnectionStatusUpdate();
+
+                // Vérifier la cohérence
+                const wsConnected = wsServiceRef.current?.isConnected || false;
+                const stateConnected = isConnected;
+
+                if (wsConnected !== stateConnected) {
+                    console.log(`⚠️ Incohérence détectée: WS=${wsConnected}, State=${stateConnected}`);
+                    setIsConnected(wsConnected);
+                    setConnectionState(wsConnected ? 'connected' : 'disconnected');
+                    connectionStateRef.current = wsConnected ? 'connected' : 'disconnected';
+                }
+            }
+        }, WEBSOCKET_CONFIG.STATUS_CHECK_INTERVAL);
+    }, [forceConnectionStatusUpdate, isConnected]);
+
+    // ===============================================
+    // GESTION DES ÉVÉNEMENTS WEBSOCKET
+    // ===============================================
+
+    const setupEventListeners = useCallback((service: MultiplayerWebSocketService) => {
+        // Connexion réussie
+        service.on('connected', () => {
+            if (!unmountedRef.current) {
+                console.log('✅ WebSocket connecté avec succès');
+                clearTimeouts();
+                setIsConnected(true);
+                setIsConnecting(false);
+                connectionAttemptRef.current = false;
+                setConnectionState('connected');
+                connectionStateRef.current = 'connected';
+                reconnectCountRef.current = 0;
+                uptimeStartRef.current = Date.now();
+
+                setStats(prev => ({
+                    ...prev,
+                    lastHeartbeat: Date.now(),
+                    reconnectCount: prev.reconnectCount + (prev.reconnectCount > 0 ? 1 : 0)
+                }));
+
+                showSuccess('Connexion temps réel établie');
+                startStatusMonitoring();
+            }
+        });
+
+        // Déconnexion
+        service.on('disconnected', ({ code, reason }: { code: number; reason: string }) => {
+            if (!unmountedRef.current) {
+                console.log(`🔌 WebSocket déconnecté: ${code} - ${reason}`);
+                clearTimeouts();
+                setIsConnected(false);
+                setIsConnecting(false);
+                connectionAttemptRef.current = false;
+                setConnectionState('disconnected');
+                connectionStateRef.current = 'disconnected';
+
+                // Ne pas tenter de reconnecter si c'est volontaire
+                if (code !== 1000 && code !== 1001) {
+                    showWarning('Connexion temps réel perdue');
+
+                    // Reconnexion automatique limitée
+                    if (reconnectCountRef.current < WEBSOCKET_CONFIG.MAX_RECONNECT_ATTEMPTS) {
+                        reconnectCountRef.current++;
+                        setTimeout(() => {
+                            if (!unmountedRef.current && roomCode) {
+                                console.log(`🔄 Tentative de reconnexion ${reconnectCountRef.current}/${WEBSOCKET_CONFIG.MAX_RECONNECT_ATTEMPTS}`);
+                                connect();
+                            }
+                        }, WEBSOCKET_CONFIG.RECONNECT_DELAY * reconnectCountRef.current);
+                    } else {
+                        showError('Impossible de se reconnecter automatiquement');
+                    }
+                }
+            }
+        });
+
+        // Erreurs
+        service.on('error', (error: unknown) => {
+            if (!unmountedRef.current) {
+                console.error('❌ Erreur WebSocket:', error);
+                clearTimeouts();
+                setIsConnecting(false);
+                connectionAttemptRef.current = false;
+                showError('Erreur de connexion temps réel');
+            }
+        });
+
+        // Messages de chat
+        service.on('chat_message', (message: ChatMessage) => {
+            if (!unmountedRef.current) {
+                console.log('💬 Message de chat reçu:', message);
+                setChatMessages(prev => [...prev, message]);
+                setStats(prev => ({ ...prev, messagesReceived: prev.messagesReceived + 1 }));
+            }
+        });
+
+        // Événements de joueurs
+        service.on('player_joined', (data: { username: string }) => {
+            if (!unmountedRef.current) {
+                showInfo(`👤 ${data.username} a rejoint le salon`);
+
+                const systemMessage: ChatMessage = {
+                    id: `system-joined-${Date.now()}`,
+                    user_id: 'system',
+                    username: 'Système',
+                    message: `${data.username} a rejoint le salon`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system'
+                };
+                setChatMessages(prev => [...prev, systemMessage]);
+            }
+        });
+
+        service.on('player_left', (data: { username: string }) => {
+            if (!unmountedRef.current) {
+                showInfo(`👤 ${data.username} a quitté le salon`);
+
+                const systemMessage: ChatMessage = {
+                    id: `system-left-${Date.now()}`,
+                    user_id: 'system',
+                    username: 'Système',
+                    message: `${data.username} a quitté le salon`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system'
+                };
+                setChatMessages(prev => [...prev, systemMessage]);
+            }
+        });
+
+        service.on('game_started', () => {
+            if (!unmountedRef.current) {
+                showSuccess('🎮 La partie a commencé !');
+
+                const systemMessage: ChatMessage = {
+                    id: `system-game-${Date.now()}`,
+                    user_id: 'system',
+                    username: 'Système',
+                    message: '🎮 La partie a commencé !',
+                    timestamp: new Date().toISOString(),
+                    type: 'game'
+                };
+                setChatMessages(prev => [...prev, systemMessage]);
+            }
+        });
+
+    }, [showError, showSuccess, showInfo, showWarning, clearTimeouts, startStatusMonitoring, roomCode]);
+
+    // ===============================================
+    // FONCTION DE CONNEXION PRINCIPALE
+    // ===============================================
+
     const connect = useCallback(async () => {
         // Vérifications préalables
         if (!roomCode || !user || unmountedRef.current) {
-            console.log('❌ Cannot connect: missing requirements', { roomCode, user: !!user, unmounted: unmountedRef.current });
+            console.log('❌ Impossibilité de se connecter:', {
+                roomCode: !!roomCode,
+                user: !!user,
+                unmounted: unmountedRef.current
+            });
             return;
         }
 
-        // Éviter les connexions multiples
+        // Éviter les connexions multiples simultanées
         if (connectionAttemptRef.current || isConnecting) {
-            console.log('⚠️ Connection already in progress, skipping');
+            console.log('⚠️ Connexion déjà en cours, ignorée');
             return;
         }
 
-        // Si déjà connecté à la même room, ne pas reconnecter
-        if (wsServiceRef.current?.isConnected && lastRoomCodeRef.current === roomCode) {
-            console.log('✅ Already connected to this room');
+        // Si déjà connecté à la même room ET connexion stable, ne pas reconnecter
+        if (wsServiceRef.current?.isConnected &&
+            lastRoomCodeRef.current === roomCode &&
+            connectionStateRef.current === 'connected') {
+            console.log('✅ Déjà connecté à cette room et stable');
             return;
         }
 
@@ -58,11 +350,24 @@ export const useWebSocket = (roomCode?: string) => {
             connectionAttemptRef.current = true;
             setIsConnecting(true);
 
-            console.log(`🔌 Connecting to WebSocket for room: ${roomCode}`);
+            setStats(prev => ({ ...prev, connectionAttempts: prev.connectionAttempts + 1 }));
 
-            // Nettoyer la connexion précédente si elle existe
+            console.log(`🔌 Connexion WebSocket vers room: ${roomCode}`);
+
+            // Nettoyer proprement la connexion précédente
             if (wsServiceRef.current) {
+                console.log('🧹 Nettoyage de la connexion précédente');
+                wsServiceRef.current.removeAllListeners();
                 wsServiceRef.current.disconnect();
+                wsServiceRef.current = null;
+            }
+
+            // Pause pour éviter les races conditions
+            await new Promise(resolve => setTimeout(resolve, WEBSOCKET_CONFIG.CLEANUP_DELAY));
+
+            if (unmountedRef.current) {
+                console.log('⚠️ Composant démonté pendant le nettoyage');
+                return;
             }
 
             // Créer nouvelle instance
@@ -70,106 +375,64 @@ export const useWebSocket = (roomCode?: string) => {
             lastRoomCodeRef.current = roomCode;
 
             // Configurer les event listeners
-            wsServiceRef.current.on('connected', () => {
-                if (!unmountedRef.current) {
-                    console.log('✅ WebSocket connected successfully');
-                    setIsConnected(true);
-                    setIsConnecting(false);
+            setupEventListeners(wsServiceRef.current);
+
+            // Timeout de connexion
+            connectionTimeoutRef.current = setTimeout(() => {
+                if (connectionAttemptRef.current && !unmountedRef.current) {
+                    console.log('⏰ Timeout de connexion WebSocket');
                     connectionAttemptRef.current = false;
-                    setConnectionState('connected');
-                    showSuccess('Connexion temps réel établie');
+                    setIsConnecting(false);
+                    showError('Timeout de connexion WebSocket');
+                    cleanupConnection();
                 }
-            });
+            }, WEBSOCKET_CONFIG.CONNECTION_TIMEOUT);
 
-            wsServiceRef.current.on('disconnected', ({ code, reason }: { code: number; reason: string }) => {
-                if (!unmountedRef.current) {
-                    console.log(`🔌 WebSocket disconnected: ${code} - ${reason}`);
-                    setIsConnected(false);
-                    setIsConnecting(false);
-                    connectionAttemptRef.current = false;
-                    setConnectionState('disconnected');
+            // Tenter la connexion avec retry limité
+            let retryCount = 0;
+            const maxRetries = 3;
 
-                    // Ne pas tenter de reconnecter si c'est une déconnexion volontaire
-                    if (code !== 1000) {
-                        showError('Connexion temps réel perdue');
+            const tryConnect = async (): Promise<void> => {
+                try {
+                    if (wsServiceRef.current && !unmountedRef.current) {
+                        await wsServiceRef.current.connect(roomCode, user.id);
+                    }
+                } catch (error) {
+                    retryCount++;
+                    if (retryCount < maxRetries && !unmountedRef.current) {
+                        console.log(`🔄 Retry connexion ${retryCount}/${maxRetries}`);
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                        await tryConnect();
+                    } else {
+                        throw error;
                     }
                 }
-            });
+            };
 
-            wsServiceRef.current.on('error', (error: unknown) => {
-                if (!unmountedRef.current) {
-                    console.error('❌ WebSocket error:', error);
-                    setIsConnecting(false);
-                    connectionAttemptRef.current = false;
-                    showError('Erreur de connexion temps réel');
-                }
-            });
+            await tryConnect();
 
-            // CORRECTION: Gérer les messages de chat
-            wsServiceRef.current.on('chat_message', (message: ChatMessage) => {
-                if (!unmountedRef.current) {
-                    setChatMessages(prev => [...prev, message]);
-                }
-            });
-
-            // Gérer les événements de joueurs
-            wsServiceRef.current.on('player_joined', (data: { username: string }) => {
-                if (!unmountedRef.current) {
-                    showInfo(`👤 ${data.username} a rejoint le salon`);
-
-                    // Ajouter un message système
-                    const systemMessage: ChatMessage = {
-                        id: `system-${Date.now()}`,
-                        user_id: 'system',
-                        username: 'Système',
-                        message: `${data.username} a rejoint le salon`,
-                        timestamp: new Date().toISOString(),
-                        type: 'system'
-                    };
-                    setChatMessages(prev => [...prev, systemMessage]);
-                }
-            });
-
-            wsServiceRef.current.on('player_left', (data: { username: string }) => {
-                if (!unmountedRef.current) {
-                    showInfo(`👤 ${data.username} a quitté le salon`);
-
-                    // Ajouter un message système
-                    const systemMessage: ChatMessage = {
-                        id: `system-${Date.now()}`,
-                        user_id: 'system',
-                        username: 'Système',
-                        message: `${data.username} a quitté le salon`,
-                        timestamp: new Date().toISOString(),
-                        type: 'system'
-                    };
-                    setChatMessages(prev => [...prev, systemMessage]);
-                }
-            });
-
-            wsServiceRef.current.on('game_started', (_data: unknown) => {
-                if (!unmountedRef.current) {
-                    showSuccess('🎮 La partie a commencé !');
-                }
-            });
-
-            // Tenter la connexion
-            await wsServiceRef.current.connect(roomCode, user.id);
-
-        } catch (error) {
+        } catch (error: any) {
             if (!unmountedRef.current) {
-                console.error('❌ Failed to connect WebSocket:', error);
-                setIsConnecting(false);
+                console.error('❌ Erreur de connexion WebSocket:', error);
                 connectionAttemptRef.current = false;
-                showError('Impossible de se connecter au serveur');
+                setIsConnecting(false);
+                showError(`Impossible de se connecter: ${error.message || 'Erreur inconnue'}`);
+                cleanupConnection();
             }
         }
-    }, [roomCode, user, isConnecting, showError, showSuccess, showInfo]);
+    }, [roomCode, user, isConnecting, setupEventListeners, showError, cleanupConnection]);
 
-    // CORRECTION: Fonction pour envoyer des messages de chat
+    // ===============================================
+    // FONCTIONS DE COMMUNICATION
+    // ===============================================
+
     const sendChatMessage = useCallback((message: string): boolean => {
-        if (!wsServiceRef.current?.isConnected || !user) {
-            console.warn('Cannot send chat message: not connected or no user');
+        if (!wsServiceRef.current?.isConnected || !user || !message.trim()) {
+            console.warn('Impossible d\'envoyer le message de chat:', {
+                connected: wsServiceRef.current?.isConnected,
+                user: !!user,
+                message: !!message.trim()
+            });
             return false;
         }
 
@@ -185,50 +448,36 @@ export const useWebSocket = (roomCode?: string) => {
                 }
             };
 
-            return wsServiceRef.current.send(chatEvent);
+            const success = wsServiceRef.current.send(chatEvent);
+
+            if (success) {
+                setStats(prev => ({ ...prev, messagesSent: prev.messagesSent + 1 }));
+                console.log('📤 Message de chat envoyé:', message.trim());
+            }
+
+            return success;
         } catch (error) {
-            console.error('❌ Failed to send chat message:', error);
+            console.error('❌ Erreur envoi message chat:', error);
             return false;
         }
     }, [user, roomCode]);
 
-    // CORRECTION: Effet avec protection contre les multiples connexions
-    useEffect(() => {
-        unmountedRef.current = false;
-
-        // NOUVEAU: Éviter les reconnexions si déjà connecté à la même room
-        if (roomCode && user && roomCode !== lastRoomCodeRef.current) {
-            lastRoomCodeRef.current = roomCode;
-            connect();
-        }
-
-        return () => {
-            unmountedRef.current = true;
-            // CORRECTION: Ne nettoyer que si on change de room, pas au démontage
-            if (lastRoomCodeRef.current !== roomCode) {
-                cleanupConnection();
-            }
-        };
-    }, [roomCode, user?.id]); // Dépendances minimales pour éviter les reconnexions
-
-    // CORRECTION: Nettoyage au démontage
-    useEffect(() => {
-        return () => {
-            unmountedRef.current = true;
-            cleanupConnection();
-        };
-    }, [cleanupConnection]);
-
-    // Fonction pour envoyer des messages
-    const sendMessage = useCallback((message: any) => {
+    const sendMessage = useCallback((message: any): boolean => {
         if (wsServiceRef.current?.isConnected) {
-            wsServiceRef.current.send(message);
-            return true;
+            try {
+                const success = wsServiceRef.current.send(message);
+                if (success) {
+                    setStats(prev => ({ ...prev, messagesSent: prev.messagesSent + 1 }));
+                }
+                return success;
+            } catch (error) {
+                console.error('❌ Erreur envoi message:', error);
+                return false;
+            }
         }
         return false;
     }, []);
 
-    // Fonction pour s'abonner aux événements
     const subscribe = useCallback((event: string, handler: (data: any) => void) => {
         if (wsServiceRef.current) {
             wsServiceRef.current.on(event, handler);
@@ -237,17 +486,106 @@ export const useWebSocket = (roomCode?: string) => {
         return () => {};
     }, []);
 
+    // ===============================================
+    // FONCTIONS UTILITAIRES
+    // ===============================================
+
+    const forceReconnect = useCallback(async () => {
+        console.log('🔄 Reconnexion forcée demandée');
+        reconnectCountRef.current = 0; // Reset du compteur
+        cleanupConnection();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!unmountedRef.current) {
+            await connect();
+        }
+    }, [cleanupConnection, connect]);
+
+    const clearChatMessages = useCallback(() => {
+        setChatMessages([]);
+    }, []);
+
+    const getConnectionInfo = useCallback(() => {
+        return {
+            isConnected,
+            isConnecting,
+            connectionState,
+            roomCode,
+            userId: user?.id,
+            wsServiceExists: !!wsServiceRef.current,
+            wsServiceConnected: wsServiceRef.current?.isConnected,
+            lastRoomCode: lastRoomCodeRef.current,
+            connectionAttempt: connectionAttemptRef.current,
+            unmounted: unmountedRef.current,
+            stats
+        };
+    }, [isConnected, isConnecting, connectionState, roomCode, user?.id, stats]);
+
+    // ===============================================
+    // EFFETS
+    // ===============================================
+
+    // Effet de connexion automatique
+    useEffect(() => {
+        unmountedRef.current = false;
+
+        if (roomCode && user && !isConnected && !isConnecting) {
+            console.log('🚀 Connexion automatique déclenchée');
+            connect();
+        }
+
+        return () => {
+            // Ne pas nettoyer immédiatement au démontage pour éviter les coupures
+        };
+    }, [roomCode, user?.id]); // Dépendances minimales
+
+    // Effet de nettoyage final
+    useEffect(() => {
+        return () => {
+            console.log('🔌 Démontage du hook useWebSocket');
+            unmountedRef.current = true;
+
+            // Nettoyage différé pour éviter les coupures intempestives
+            setTimeout(() => {
+                cleanupConnection();
+            }, 1000);
+        };
+    }, []);
+
+    // ===============================================
+    // RETOUR DU HOOK
+    // ===============================================
+
     return {
+        // État de connexion
         isConnected,
         isConnecting,
         connectionState,
-        // CORRECTION: Retourner chatMessages et sendChatMessage
+
+        // Chat
         chatMessages,
         sendChatMessage,
+        clearChatMessages,
+
+        // Actions de connexion
         connect,
         disconnect: cleanupConnection,
+        forceReconnect,
+
+        // Communication
         sendMessage,
         subscribe,
-        wsService: wsServiceRef.current
+
+        // Utilitaires
+        wsService: wsServiceRef.current,
+        stats,
+
+        // Debug
+        getConnectionInfo
     };
 };
+
+// ===============================================
+// EXPORT PAR DÉFAUT
+// ===============================================
+
+export default useWebSocket;

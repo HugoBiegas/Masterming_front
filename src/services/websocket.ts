@@ -574,4 +574,9 @@ export class MultiplayerWebSocketService {
             connectionState: this.getConnectionState()
         };
     }
+
+    removeAllListeners() {
+        this.eventListeners.clear();
+        console.log('🔌 All event listeners removed');
+    }
 }

@@ -10,6 +10,7 @@ import {
     MultiplayerAttemptResponse,
     PlayerStatus
 } from '@/types/multiplayer';
+import useWebSocket from "@/hooks/useWebSocket";
 
 interface UseMultiplayerOptions {
     autoRefresh?: boolean;
@@ -52,6 +53,16 @@ export const useMultiplayer = (
 ): UseMultiplayerReturn => {
     const { user } = useAuth();
     const { showError, showSuccess, showWarning } = useNotification();
+    const { isConnected } = useWebSocket(roomCode);
+
+    useEffect(() => {
+        const wsService = (window as any).wsServiceRef?.current;
+        if (wsService?.isConnected && !isConnected) {
+            console.log('🔄 Forcing connection status update in useMultiplayer');
+            // Trigger a state update
+            setTimeout(() => window.location.reload(), 100);
+        }
+    }, [isConnected]);
 
     const {
         autoRefresh = true,
