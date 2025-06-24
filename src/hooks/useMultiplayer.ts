@@ -1,8 +1,4 @@
-// =============================================================================
-// CORRECTION DU HOOK USEMULTIPLAYER
-// =============================================================================
-
-// src/hooks/useMultiplayer.ts
+// src/hooks/useMultiplayer.ts - CORRECTION COMPLÈTE
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -71,7 +67,8 @@ export const useMultiplayer = (
     // Refs pour éviter les fuites mémoire et les dépendances circulaires
     const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const mountedRef = useRef(true);
-    const isRefreshingRef = useRef(false); // NOUVEAU: Éviter les appels multiples
+    const isRefreshingRef = useRef(false);
+    const hasInitialLoadRef = useRef(false); // NOUVEAU: Tracking du chargement initial
 
     // États calculés
     const isGameActive = currentRoom?.status === 'active';
@@ -81,7 +78,7 @@ export const useMultiplayer = (
     const canStart = isHost &&
         currentRoom?.status === 'waiting' &&
         players.length >= 2 &&
-        players.length <= (currentRoom?.max_players || 8);
+        players.length <= (currentRoom?.max_players || 50); // CORRECTION: Limite augmentée
 
     // Statistiques
     const stats = {
@@ -94,54 +91,135 @@ export const useMultiplayer = (
         ).length
     };
 
-    // CORRECTION: Rafraîchir les données de la room sans dépendances circulaires
+    // CORRECTION: Fonction de rafraîchissement simplifiée et robuste
     const refreshRoom = useCallback(async () => {
-        if (!roomCode || !mountedRef.current || isRefreshingRef.current) {
+        if (!roomCode || !mountedRef.current) {
+            console.log('❌ Cannot refresh: roomCode missing or component unmounted');
+            return;
+        }
+
+        // CORRECTION: Éviter les appels concurrents avec un simple flag
+        if (isRefreshingRef.current) {
+            console.log('⚠️ Refresh already in progress, skipping');
             return;
         }
 
         try {
-            isRefreshingRef.current = true; // NOUVEAU: Bloquer les appels concurrents
-            setError(null);
-
+            isRefreshingRef.current = true;
             console.log('🔄 Refreshing room:', roomCode);
 
-            // Récupérer les détails de la room
-            const roomData = await multiplayerService.getRoomDetails(roomCode);
-            if (!mountedRef.current) return;
+            // Paralléliser les requêtes pour plus de rapidité
+            const [roomDataPromise, playersDataPromise] = [
+                multiplayerService.getRoomDetails(roomCode).catch(err => {
+                    console.error('❌ Error fetching room details:', err);
+                    return null;
+                }),
+                multiplayerService.getPlayerProgress(roomCode).catch(err => {
+                    console.error('❌ Error fetching players:', err);
+                    return [];
+                })
+            ];
 
-            if (roomData) {
-                setCurrentRoom(roomData);
-                console.log('✅ Room data updated:', roomData);
+            const [roomData, playersData] = await Promise.all([roomDataPromise, playersDataPromise]);
+
+            // Vérifier si le composant est toujours monté
+            if (!mountedRef.current) {
+                console.log('🚫 Component unmounted during refresh');
+                return;
             }
 
-            // Récupérer la liste des joueurs
-            const playersData = await multiplayerService.getPlayerProgress(roomCode);
-            if (!mountedRef.current) return;
+            // CORRECTION: Toujours mettre à jour l'état, même en cas d'erreur partielle
+            if (roomData) {
+                setCurrentRoom(roomData);
+                console.log('✅ Room data updated:', roomData.room_code, 'status:', roomData.status);
+            }
 
             if (Array.isArray(playersData)) {
                 setPlayers(playersData);
                 console.log('✅ Players data updated:', playersData.length, 'players');
             }
 
+            // CORRECTION: Nettoyer les erreurs si tout va bien
+            if (roomData || (Array.isArray(playersData) && playersData.length >= 0)) {
+                setError(null);
+            }
+
         } catch (err: any) {
-            if (!mountedRef.current) return;
-
             console.error('❌ Erreur rafraîchissement room:', err);
-            const errorMessage = err.message || 'Erreur lors du rafraîchissement';
-            setError(errorMessage);
 
-            // Ne pas afficher d'erreur si l'utilisateur a quitté la room
-            if (!err.message?.includes('quitté') && !err.message?.includes('not found')) {
-                showError(errorMessage);
+            if (mountedRef.current) {
+                const errorMessage = err.message || 'Erreur lors du rafraîchissement';
+                setError(errorMessage);
+
+                // Ne pas afficher d'erreur si l'utilisateur a quitté la room ou si la room n'existe plus
+                if (!errorMessage.includes('quitté') &&
+                    !errorMessage.includes('not found') &&
+                    !errorMessage.includes('404')) {
+                    showError(errorMessage);
+                }
             }
         } finally {
             if (mountedRef.current) {
+                // CORRECTION: Toujours arrêter le loading même en cas d'erreur
                 setLoading(false);
-                isRefreshingRef.current = false; // NOUVEAU: Débloquer les appels
+                hasInitialLoadRef.current = true;
             }
+            isRefreshingRef.current = false;
         }
-    }, [roomCode, showError]); // CORRECTION: Dépendances minimales
+    }, [roomCode, showError]);
+
+    // CORRECTION: Chargement initial simplifié avec gestion d'erreur robuste
+    useEffect(() => {
+        if (!roomCode || hasInitialLoadRef.current) {
+            return;
+        }
+
+        console.log('🔄 Starting initial room load for:', roomCode);
+
+        // Reset l'état pour le chargement initial
+        setLoading(true);
+        setError(null);
+        hasInitialLoadRef.current = false;
+
+        // Démarrer le chargement initial
+        refreshRoom();
+
+        // Nettoyage si le composant se démonte pendant le chargement
+        return () => {
+            if (!hasInitialLoadRef.current) {
+                console.log('🧹 Cleaning up initial load');
+                mountedRef.current = false;
+            }
+        };
+    }, [roomCode, refreshRoom]);
+
+    // CORRECTION: Auto-refresh simplifié et plus stable
+    useEffect(() => {
+        if (!autoRefresh || !roomCode || loading || !hasInitialLoadRef.current) {
+            return;
+        }
+
+        console.log('⏰ Setting up auto-refresh for room:', roomCode);
+
+        const intervalId = setInterval(() => {
+            if (mountedRef.current && !isRefreshingRef.current) {
+                console.log('⏰ Auto-refresh triggered');
+                refreshRoom();
+            }
+        }, refreshInterval);
+
+        refreshIntervalRef.current = intervalId;
+
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+            if (refreshIntervalRef.current) {
+                clearInterval(refreshIntervalRef.current);
+                refreshIntervalRef.current = null;
+            }
+        };
+    }, [autoRefresh, roomCode, refreshInterval, loading, hasInitialLoadRef.current, refreshRoom]);
 
     // Démarrer la partie
     const startGame = useCallback(async (): Promise<boolean> => {
@@ -156,13 +234,21 @@ export const useMultiplayer = (
         }
 
         try {
+            console.log('🚀 Starting game for room:', currentRoom.room_code);
             await multiplayerService.startGame(currentRoom.room_code);
             showSuccess('🚀 Partie démarrée !');
-            await refreshRoom(); // Rafraîchir l'état
+
+            // Forcer un refresh immédiat pour obtenir le nouvel état
+            setTimeout(() => {
+                if (mountedRef.current) {
+                    refreshRoom();
+                }
+            }, 1000);
+
             return true;
 
         } catch (error: any) {
-            console.error('Erreur démarrage partie:', error);
+            console.error('❌ Erreur démarrage partie:', error);
             showError(error.message || 'Impossible de démarrer la partie');
             return false;
         }
@@ -173,21 +259,23 @@ export const useMultiplayer = (
         if (!roomCode) return;
 
         try {
+            console.log('🚪 Leaving room:', roomCode);
             await multiplayerService.leaveRoom(roomCode);
 
             // Nettoyer l'état local
             setCurrentRoom(null);
             setPlayers([]);
             setError(null);
+            setLoading(false);
 
             showSuccess('Vous avez quitté la partie');
         } catch (error: any) {
-            console.error('Erreur quitter room:', error);
+            console.error('❌ Erreur quitter room:', error);
             showError(error.message || 'Erreur lors de la sortie de la partie');
         }
     }, [roomCode, showSuccess, showError]);
 
-    // Faire une tentative avec conversion de type
+    // Faire une tentative
     const makeAttempt = useCallback(async (
         combination: number[]
     ): Promise<MultiplayerAttemptResponse | null> => {
@@ -202,21 +290,19 @@ export const useMultiplayer = (
         }
 
         try {
-            // Créer la requête d'attempt avec le format correct
             const attemptRequest: any = {
                 combination,
                 room_code: currentRoom.room_code,
                 mastermind_number: (currentPlayer.current_mastermind as number) || 1
             };
 
-            // CORRECTION: Le service retourne AttemptResult, on le convertit
             const result = await multiplayerService.makeAttempt(
                 currentRoom.room_code,
                 attemptRequest
             );
 
             if (result) {
-                // CONVERSION: AttemptResult vers MultiplayerAttemptResponse
+                // Conversion vers le format attendu
                 const convertedResult: MultiplayerAttemptResponse = {
                     attempt: {
                         id: (result as any).id || 'temp-id',
@@ -231,142 +317,40 @@ export const useMultiplayer = (
                     },
                     mastermind_completed: (result as any).is_correct || false,
                     score: (result as any).score || 0,
-                    // Propriétés ajoutées pour compatibilité
                     is_correct: (result as any).is_correct || false,
                     correct_positions: (result as any).correct_positions || 0,
                     correct_colors: (result as any).correct_colors || 0
                 };
 
-                // Rafraîchir l'état des joueurs après la tentative
-                await refreshRoom();
+                // Rafraîchir l'état après la tentative
+                setTimeout(() => {
+                    if (mountedRef.current) {
+                        refreshRoom();
+                    }
+                }, 500);
+
                 return convertedResult;
             }
 
             return null;
         } catch (error: any) {
-            console.error('Erreur tentative:', error);
+            console.error('❌ Erreur tentative:', error);
             showError(error.message || 'Erreur lors de la tentative');
             return null;
         }
     }, [currentRoom, currentPlayer, showError, refreshRoom]);
 
-    // CORRECTION: Effet pour le chargement initial - compatible StrictMode
-    useEffect(() => {
-        if (!roomCode) return;
-
-        let cancelled = false;
-
-        const loadInitialData = async () => {
-            if (isRefreshingRef.current || cancelled) return;
-
-            console.log('🔄 Initial room load for:', roomCode);
-            setLoading(true);
-            setError(null);
-
-            try {
-                isRefreshingRef.current = true;
-
-                // Récupérer les détails de la room
-                const roomData = await multiplayerService.getRoomDetails(roomCode);
-                if (cancelled || !mountedRef.current) return;
-
-                if (roomData) {
-                    setCurrentRoom(roomData);
-                    console.log('✅ Initial room data loaded:', roomData);
-                }
-
-                // Récupérer la liste des joueurs
-                const playersData = await multiplayerService.getPlayerProgress(roomCode);
-                if (cancelled || !mountedRef.current) return;
-
-                if (Array.isArray(playersData)) {
-                    setPlayers(playersData);
-                    console.log('✅ Initial players data loaded:', playersData.length, 'players');
-                }
-
-            } catch (err: any) {
-                if (cancelled || !mountedRef.current) return;
-
-                console.error('❌ Erreur chargement initial:', err);
-                const errorMessage = err.message || 'Erreur lors du chargement';
-                setError(errorMessage);
-
-                if (!err.message?.includes('quitté') && !err.message?.includes('not found')) {
-                    showError(errorMessage);
-                }
-            } finally {
-                if (!cancelled && mountedRef.current) {
-                    setLoading(false);
-                    isRefreshingRef.current = false;
-                }
-            }
-        };
-
-        loadInitialData();
-
-        // Cleanup pour StrictMode
-        return () => {
-            cancelled = true;
-        };
-    }, [roomCode, showError]);
-
-    // CORRECTION: Effet pour le rafraîchissement automatique - compatible StrictMode
-    useEffect(() => {
-        if (!autoRefresh || !roomCode) return;
-
-        let timeoutId: NodeJS.Timeout;
-        let intervalId: NodeJS.Timeout;
-
-        console.log('⏰ Setting up auto-refresh for room:', roomCode);
-
-        // Fonction pour démarrer le rafraîchissement automatique
-        const startAutoRefresh = () => {
-            intervalId = setInterval(() => {
-                if (mountedRef.current && !isRefreshingRef.current && currentRoom) {
-                    console.log('⏰ Auto-refresh triggered');
-                    refreshRoom();
-                }
-            }, refreshInterval);
-
-            // Stocker la référence pour le cleanup
-            refreshIntervalRef.current = intervalId;
-        };
-
-        // Attendre que le chargement initial soit terminé avant de démarrer l'auto-refresh
-        const checkAndStartAutoRefresh = () => {
-            if (currentRoom && !loading) {
-                startAutoRefresh();
-            } else {
-                // Réessayer dans 1 seconde si pas encore prêt
-                timeoutId = setTimeout(checkAndStartAutoRefresh, 1000);
-            }
-        };
-
-        // Démarrer après un petit délai pour éviter les conflits
-        timeoutId = setTimeout(checkAndStartAutoRefresh, 2000);
-
-        return () => {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-            }
-            if (intervalId) {
-                clearInterval(intervalId);
-            }
-            if (refreshIntervalRef.current) {
-                clearInterval(refreshIntervalRef.current);
-                refreshIntervalRef.current = null;
-            }
-        };
-    }, [autoRefresh, roomCode, refreshInterval, currentRoom, loading]);
-
-    // Nettoyage à la déconnexion du composant
+    // Nettoyage au démontage
     useEffect(() => {
         return () => {
             console.log('🧹 Cleaning up useMultiplayer');
             mountedRef.current = false;
             isRefreshingRef.current = false;
+            hasInitialLoadRef.current = false;
+
             if (refreshIntervalRef.current) {
                 clearInterval(refreshIntervalRef.current);
+                refreshIntervalRef.current = null;
             }
         };
     }, []);

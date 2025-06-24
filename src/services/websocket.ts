@@ -6,6 +6,8 @@ export interface WebSocketMessage {
     data: any;
     timestamp?: number;
     message_id?: string;
+    room_code?: string;
+    user_id?: string;
 }
 
 export interface ChatMessage {
@@ -164,6 +166,25 @@ export class MultiplayerWebSocketService {
         }, delay);
     }
 
+    authenticate(userId: string, token?: string): boolean {
+        if (!this.isConnected) {
+            console.warn('⚠️ Cannot authenticate: not connected');
+            return false;
+        }
+
+        const authMessage = {
+            type: 'authenticate',
+            data: {
+                user_id: userId,
+                room_code: this.roomCode,
+                token: token || '',
+                timestamp: new Date().toISOString()
+            }
+        };
+
+        return this.send(authMessage);
+    }
+
     // =====================================================
     // HEARTBEAT
     // =====================================================
@@ -192,21 +213,26 @@ export class MultiplayerWebSocketService {
     // ENVOI DE MESSAGES
     // =====================================================
 
-    send(message: WebSocketMessage): boolean {
+    send(message: any): boolean {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('⚠️ WebSocket not connected, cannot send message:', message);
+            console.warn('⚠️ Cannot send message: WebSocket not connected');
             return false;
         }
 
         try {
-            const messageWithId = {
-                ...message,
-                timestamp: Date.now(),
-                message_id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            // NOUVEAU: Validation et normalisation du message sortant
+            const normalizedMessage = {
+                type: message.type || 'unknown',
+                data: message.data || message,
+                timestamp: new Date().toISOString(),
+                user_id: this.userId,
+                room_code: this.roomCode
             };
 
-            this.ws.send(JSON.stringify(messageWithId));
-            console.log('📤 Sent WebSocket message:', messageWithId.type);
+            const messageString = JSON.stringify(normalizedMessage);
+            this.ws.send(messageString);
+
+            console.log('📤 Sent WebSocket message:', normalizedMessage.type, normalizedMessage.data);
             return true;
         } catch (error) {
             console.error('❌ Failed to send WebSocket message:', error);
@@ -276,46 +302,73 @@ export class MultiplayerWebSocketService {
 
     private handleMessage(rawData: string): void {
         try {
-            const message: WebSocketMessage = JSON.parse(rawData);
+            // NOUVEAU: Parser avec validation robuste
+            let parsedMessage: any;
+
+            try {
+                parsedMessage = JSON.parse(rawData);
+            } catch (parseError) {
+                console.error('❌ Failed to parse WebSocket message:', parseError);
+                console.error('Raw data:', rawData);
+                return;
+            }
+
+            // CORRECTION: Normaliser le format du message
+            const message: WebSocketMessage = {
+                type: parsedMessage.type || 'unknown',
+                data: parsedMessage.data || parsedMessage, // Fallback si data est directement dans le message
+                timestamp: parsedMessage.timestamp || new Date().toISOString(),
+                message_id: parsedMessage.message_id || `msg_${Date.now()}`,
+                room_code: parsedMessage.room_code,
+                user_id: parsedMessage.user_id
+            };
+
             console.log('📥 Received WebSocket message:', message.type, message.data);
 
-            // Router les messages selon leur type
+            // CORRECTION: Validation des données avant traitement
+            if (!message.type) {
+                console.warn('⚠️ WebSocket message missing type:', parsedMessage);
+                return;
+            }
+
+            // Router les messages selon leur type avec gestion des données manquantes
             switch (message.type) {
                 case 'connection_established':
-                    this.handleConnectionEstablished(message.data);
+                    this.handleConnectionEstablished(message.data || {});
                     break;
                 case 'authentication_success':
-                    this.handleAuthenticationSuccess(message.data);
+                    this.handleAuthenticationSuccess(message.data || {});
                     break;
                 case 'authentication_failed':
-                    this.handleAuthenticationFailed(message.data);
+                    this.handleAuthenticationFailed(message.data || {});
                     break;
                 case 'chat_broadcast':
                 case 'chat_message':
-                    this.handleChatMessage(message.data);
+                    this.handleChatMessage(message.data || {});
                     break;
                 case 'player_connected':
                 case 'player_joined':
-                    this.handlePlayerJoined(message.data);
+                    this.handlePlayerJoined(message.data || {});
                     break;
                 case 'player_disconnected':
                 case 'player_left':
-                    this.handlePlayerLeft(message.data);
+                    this.handlePlayerLeft(message.data || {});
                     break;
                 case 'game_started':
-                    this.handleGameStarted(message.data);
+                    this.handleGameStarted(message.data || {});
                     break;
                 case 'attempt_made':
-                    this.handleAttemptMade(message.data);
+                    this.handleAttemptMade(message.data || {});
                     break;
                 case 'room_state':
-                    this.handleRoomState(message.data);
+                    this.handleRoomState(message.data || {});
                     break;
                 case 'heartbeat':
                     // Heartbeat reçu, connection OK
+                    this.handleHeartbeat(message.data || {});
                     break;
                 case 'error':
-                    this.handleError(message.data);
+                    this.handleError(message.data || {});
                     break;
                 default:
                     console.log('📥 Unhandled message type:', message.type);
@@ -324,13 +377,13 @@ export class MultiplayerWebSocketService {
 
             // Émettre l'événement générique
             this.emit('message', message);
-            this.emit(message.type, message.data);
+            this.emit(message.type, message.data || {});
 
         } catch (error) {
-            console.error('❌ Failed to parse WebSocket message:', error);
+            console.error('❌ Failed to handle WebSocket message:', error);
+            console.error('Raw data:', rawData);
         }
     }
-
     private handleConnectionEstablished(data: any): void {
         console.log('✅ Connection established:', data);
         this.emit('connection_established', data);
@@ -339,7 +392,7 @@ export class MultiplayerWebSocketService {
     private handleAuthenticationSuccess(data: any): void {
         console.log('✅ Authentication successful:', data);
         this.isAuthenticated = true;
-        this.userId = data.user_id;
+        this.userId = data.user_id || this.userId;
         this.emit('authentication_success', data);
     }
 
@@ -348,32 +401,77 @@ export class MultiplayerWebSocketService {
         this.emit('authentication_failed', data);
     }
 
+    private handleHeartbeat(data: any): void {
+        // Répondre au heartbeat pour maintenir la connexion
+        if (this.isConnected) {
+            this.send({
+                type: 'heartbeat_response',
+                data: {
+                    timestamp: new Date().toISOString()
+                }
+            });
+        }
+    }
+
     private handleChatMessage(data: any): void {
+        // CORRECTION: Validation et normalisation des données de chat
         const chatMessage: ChatMessage = {
-            id: `${data.user_id}-${Date.now()}`,
-            user_id: data.user_id,
-            username: data.username,
-            message: data.message,
+            id: data.message_id || `${data.user_id || 'unknown'}-${Date.now()}`,
+            user_id: data.user_id || 'system',
+            username: data.username || 'Utilisateur',
+            message: data.message || '',
             timestamp: data.timestamp || new Date().toISOString(),
-            type: 'user'
+            type: data.type || 'user'
         };
 
-        this.emit('chat_message', chatMessage);
+        if (chatMessage.message.trim()) {
+            this.emit('chat_message', chatMessage);
+        }
     }
 
     private handlePlayerJoined(data: any): void {
         console.log('👤 Player joined:', data);
-        this.emit('player_joined', data);
+
+        // CORRECTION: Normaliser les données du joueur
+        const playerData = {
+            user_id: data.user_id || data.userId,
+            username: data.username || data.user_name || 'Joueur',
+            timestamp: data.timestamp || new Date().toISOString(),
+            connections_count: data.connections_count || 0,
+            ...data
+        };
+
+        this.emit('player_joined', playerData);
     }
 
     private handlePlayerLeft(data: any): void {
         console.log('👤 Player left:', data);
-        this.emit('player_left', data);
+
+        // CORRECTION: Normaliser les données du joueur qui part
+        const playerData = {
+            user_id: data.user_id || data.userId,
+            username: data.username || data.user_name || 'Joueur',
+            timestamp: data.timestamp || new Date().toISOString(),
+            connections_count: data.connections_count || 0,
+            ...data
+        };
+
+        this.emit('player_left', playerData);
     }
 
     private handleGameStarted(data: any): void {
         console.log('🎮 Game started:', data);
-        this.emit('game_started', data);
+
+        // CORRECTION: Normaliser les données de démarrage de jeu
+        const gameData = {
+            room_code: data.room_code || data.roomCode || this.roomCode,
+            started_at: data.started_at || data.startedAt || new Date().toISOString(),
+            current_mastermind: data.current_mastermind || data.currentMastermind || 1,
+            timestamp: data.timestamp || new Date().toISOString(),
+            ...data
+        };
+
+        this.emit('game_started', gameData);
     }
 
     private handleAttemptMade(data: any): void {
@@ -383,12 +481,40 @@ export class MultiplayerWebSocketService {
 
     private handleRoomState(data: any): void {
         console.log('🏠 Room state:', data);
-        this.emit('room_state', data);
+
+        // CORRECTION: Validation de l'état de la room
+        if (!data || typeof data !== 'object') {
+            console.warn('⚠️ Invalid room state data:', data);
+            return;
+        }
+
+        // NOUVEAU: Normaliser l'état de la room
+        const roomState = {
+            room_code: data.room_code || data.roomCode || this.roomCode,
+            status: data.status || 'unknown',
+            current_mastermind: data.current_mastermind || data.currentMastermind || 1,
+            players: Array.isArray(data.players) ? data.players : [],
+            connections_count: data.connections_count || data.connectionsCount || 0,
+            active_effects: Array.isArray(data.active_effects) ? data.active_effects : [],
+            timestamp: data.timestamp || new Date().toISOString(),
+            ...data
+        };
+
+        this.emit('room_state', roomState);
     }
 
     private handleError(data: any): void {
-        console.error('❌ WebSocket error:', data);
-        this.emit('error', data);
+        console.error('❌ WebSocket error received:', data);
+
+        // CORRECTION: Normaliser les données d'erreur
+        const errorData = {
+            message: data.message || data.error || 'Erreur WebSocket inconnue',
+            code: data.code || data.error_code || 'UNKNOWN_ERROR',
+            timestamp: data.timestamp || new Date().toISOString(),
+            ...data
+        };
+
+        this.emit('error', errorData);
     }
 
     // =====================================================

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -32,11 +32,48 @@ export const MultiplayerLobby: React.FC = () => {
     const { isConnected: wsConnected, wsService } = useWebSocket(roomCode);
 
     const isHost = currentRoom?.creator?.id === user?.id;
-    const canStart = isHost && players.length >= 2 && players.length <= (currentRoom?.max_players || 8);
+
+    // CORRECTION: Amélioration de la validation canStart pour supporter plus de 8 joueurs
+    const canStart = useMemo(() => {
+        if (!isHost || !currentRoom) return false;
+        return players.length >= 2 && players.length <= currentRoom.max_players && currentRoom.status === 'waiting';
+    }, [isHost, players.length, currentRoom?.max_players, currentRoom?.status]);
 
     const [isStarting, setIsStarting] = useState(false);
     const [isLeaving, setIsLeaving] = useState(false);
     const [showLeaveModal, setShowLeaveModal] = useState(false);
+
+    // NOUVEAUX ÉTATS : Gestion d'affichage pour les grandes parties
+    const [showAllPlayers, setShowAllPlayers] = useState(false);
+    const [playersViewMode, setPlayersViewMode] = useState<'grid' | 'list'>('grid');
+
+    // NOUVEAU : Configuration d'affichage intelligente selon le nombre de joueurs
+    const playersDisplayConfig = useMemo(() => {
+        const count = players.length;
+
+        if (count <= 8) {
+            return {
+                mode: 'normal' as const,
+                showToggle: false,
+                maxVisible: count,
+                columns: Math.min(count, 4)
+            };
+        } else if (count <= 20) {
+            return {
+                mode: 'compact' as const,
+                showToggle: true,
+                maxVisible: showAllPlayers ? count : 12,
+                columns: 4
+            };
+        } else {
+            return {
+                mode: 'ultra-compact' as const,
+                showToggle: true,
+                maxVisible: showAllPlayers ? count : 16,
+                columns: playersViewMode === 'list' ? 1 : 6
+            };
+        }
+    }, [players.length, showAllPlayers, playersViewMode]);
 
     // CORRECTION : Démarrage de partie avec WebSocket
     const handleStartGame = useCallback(async () => {
@@ -160,6 +197,122 @@ export const MultiplayerLobby: React.FC = () => {
             showError(error);
         }
     }, [error, showError]);
+
+    // NOUVEAU : Rendu de la section joueurs avec gestion intelligente
+    const renderPlayersSection = () => {
+        const { mode, showToggle, maxVisible } = playersDisplayConfig;
+        const visiblePlayers = players.slice(0, maxVisible);
+        const hiddenCount = players.length - maxVisible;
+
+        return (
+            <div className="space-y-4">
+                {/* En-tête avec contrôles d'affichage */}
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                        👥 Joueurs ({players.length}/{currentRoom?.max_players || '?'})
+                        {players.length > 20 && (
+                            <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                Grande partie
+                            </span>
+                        )}
+                    </h3>
+
+                    {/* Contrôles d'affichage pour les grandes parties */}
+                    {mode === 'ultra-compact' && (
+                        <div className="flex space-x-2">
+                            <button
+                                onClick={() => setPlayersViewMode(playersViewMode === 'grid' ? 'list' : 'grid')}
+                                className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                            >
+                                {playersViewMode === 'grid' ? '📋 Liste' : '⚏ Grille'}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Affichage adaptatif des joueurs */}
+                {mode === 'normal' ? (
+                    // Affichage normal pour <= 8 joueurs (votre composant existant)
+                    <PlayersList
+                        players={players}
+                        currentUserId={user?.id}
+                        creatorId={currentRoom?.creator?.id}
+                        showProgress={false}
+                        showItems={false}
+                        compactMode={false}
+                    />
+                ) : (
+                    // Affichage customisé pour les grandes parties
+                    <div className={`
+                        ${playersViewMode === 'list'
+                        ? 'space-y-2'
+                        : `grid gap-3 ${
+                            mode === 'compact' ? 'grid-cols-3 lg:grid-cols-4' :
+                                'grid-cols-4 lg:grid-cols-6'
+                        }`
+                    }
+                    `}>
+                        {visiblePlayers.map((player, index) => (
+                            <PlayerCard
+                                key={player.user_id}
+                                player={player}
+                                currentUserId={user?.id}
+                                creatorId={currentRoom?.creator?.id}
+                                mode={mode}
+                                viewMode={playersViewMode}
+                                position={index + 1}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {/* Toggle pour afficher plus/moins de joueurs */}
+                {showToggle && hiddenCount > 0 && (
+                    <div className="text-center">
+                        <button
+                            onClick={() => setShowAllPlayers(!showAllPlayers)}
+                            className="px-4 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors"
+                        >
+                            {showAllPlayers
+                                ? `🔼 Masquer ${hiddenCount} joueur${hiddenCount > 1 ? 's' : ''}`
+                                : `🔽 Afficher ${hiddenCount} joueur${hiddenCount > 1 ? 's' : ''} de plus`
+                            }
+                        </button>
+                    </div>
+                )}
+
+                {/* Statistiques pour les grandes parties */}
+                {players.length > 10 && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span className="text-gray-600">👥 Total:</span>
+                                <span className="font-medium ml-1">{players.length}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-600">✅ Prêts:</span>
+                                <span className="font-medium ml-1 text-green-600">
+                                    {players.filter(p => p.is_ready).length}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-gray-600">⏳ En attente:</span>
+                                <span className="font-medium ml-1 text-orange-600">
+                                    {players.filter(p => !p.is_ready).length}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-gray-600">🔒 Places restantes:</span>
+                                <span className="font-medium ml-1">
+                                    {(currentRoom?.max_players || 0) - players.length}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     // États de chargement et d'erreur
     if (!roomCode) {
@@ -294,19 +447,23 @@ export const MultiplayerLobby: React.FC = () => {
                             </p>
                         </div>
                     )}
+
+                    {/* NOUVEAU : Performance warning pour très grandes parties */}
+                    {players.length > 30 && (
+                        <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <p className="text-orange-800 text-sm">
+                                🚀 <strong>Grande partie détectée!</strong>
+                                Pour une meilleure expérience avec {players.length} joueurs,
+                                assurez-vous d'avoir une connexion internet stable.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Liste des joueurs */}
-                    <div>
-                        <PlayersList
-                            players={players}
-                            currentUserId={user?.id}
-                            creatorId={currentRoom.creator?.id}
-                            showProgress={false}
-                            showItems={false}
-                            compactMode={false}
-                        />
+                    {/* Liste des joueurs avec affichage intelligent */}
+                    <div className="bg-white rounded-xl shadow-lg p-6">
+                        {renderPlayersSection()}
                     </div>
 
                     {/* Chat temps réel avec WebSocket */}
@@ -364,6 +521,68 @@ export const MultiplayerLobby: React.FC = () => {
                     </div>
                 </div>
             </Modal>
+        </div>
+    );
+};
+
+// NOUVEAU : Composant PlayerCard pour l'affichage compact des grandes parties
+interface PlayerCardProps {
+    player: any;
+    currentUserId?: string;
+    creatorId?: string;
+    mode: 'compact' | 'ultra-compact';
+    viewMode: 'grid' | 'list';
+    position: number;
+}
+
+const PlayerCard: React.FC<PlayerCardProps> = ({
+                                                   player,
+                                                   currentUserId,
+                                                   creatorId,
+                                                   mode,
+                                                   viewMode,
+                                                   position
+                                               }) => {
+    const isCurrentUser = player.user_id === currentUserId;
+    const isCreator = player.user_id === creatorId;
+
+    if (viewMode === 'list') {
+        return (
+            <div className={`
+                flex items-center justify-between p-3 rounded-lg
+                ${isCurrentUser ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-50 hover:bg-gray-100'}
+                transition-colors
+            `}>
+                <div className="flex items-center space-x-3">
+                    <span className="text-sm text-gray-500 w-6">#{position}</span>
+                    <div className={`w-3 h-3 rounded-full ${player.is_ready ? 'bg-green-500' : 'bg-orange-400'}`} />
+                    <span className="font-medium">{player.username}</span>
+                    {isCreator && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">👑 Hôte</span>}
+                    {isCurrentUser && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Vous</span>}
+                </div>
+                <span className={`text-sm ${player.is_ready ? 'text-green-600' : 'text-orange-600'}`}>
+                    {player.is_ready ? '✅ Prêt' : '⏳ En attente'}
+                </span>
+            </div>
+        );
+    }
+
+    return (
+        <div className={`
+            ${mode === 'ultra-compact' ? 'p-2' : 'p-3'} rounded-lg text-center
+            ${isCurrentUser ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-50 hover:bg-gray-100'}
+            transition-colors
+        `}>
+            <div className={`w-${mode === 'ultra-compact' ? '2' : '3'} h-${mode === 'ultra-compact' ? '2' : '3'} rounded-full mx-auto mb-2 ${player.is_ready ? 'bg-green-500' : 'bg-orange-400'}`} />
+            <p className={`font-medium ${mode === 'ultra-compact' ? 'text-xs' : 'text-sm'} truncate`}>
+                {player.username}
+            </p>
+            {mode !== 'ultra-compact' && (
+                <>
+                    {isCreator && <span className="text-xs text-purple-600">👑</span>}
+                    {isCurrentUser && <span className="text-xs text-blue-600">Vous</span>}
+                </>
+            )}
         </div>
     );
 };

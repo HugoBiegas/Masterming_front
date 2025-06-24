@@ -2,142 +2,162 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import {MultiplayerWebSocketService} from "@/services/websocket";
-import {ChatMessage} from "@/hooks/useWebSocketChat";
+import { MultiplayerWebSocketService } from "@/services/websocket";
+import { ChatMessage } from "@/hooks/useWebSocketChat";
 
-export const useWebSocket = (roomCode?: string) => {
+export const useWebSocket = (roomCode: string | undefined) => {
     const { user } = useAuth();
-    const { showError, showSuccess, showInfo } = useNotification();
-
+    const { showError, showSuccess } = useNotification();
     const [isConnected, setIsConnected] = useState(false);
-    const [connectionState, setConnectionState] = useState<string>('disconnected');
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [isConnecting, setIsConnecting] = useState(false);
 
-    const wsService = useRef<MultiplayerWebSocketService | null>(null);
+    // Refs pour éviter les reconnexions multiples
+    const wsServiceRef = useRef<MultiplayerWebSocketService | null>(null);
+    const connectionAttemptRef = useRef(false);
+    const unmountedRef = useRef(false);
+    const roomCodeRef = useRef<string | undefined>(undefined);
 
-    // Initialiser le service WebSocket
+    // CORRECTION: Fonction de nettoyage complète
+    const cleanupConnection = useCallback(() => {
+        if (wsServiceRef.current) {
+            console.log('🧹 Cleaning up WebSocket connection');
+            wsServiceRef.current.disconnect();
+            wsServiceRef.current = null;
+        }
+        connectionAttemptRef.current = false;
+        setIsConnected(false);
+        setIsConnecting(false);
+    }, []);
+
+    // CORRECTION: Connexion avec protection contre les doublons
+    const connect = useCallback(async () => {
+        // Vérifications préalables
+        if (!roomCode || !user || unmountedRef.current) {
+            console.log('❌ Cannot connect: missing requirements', { roomCode, user: !!user, unmounted: unmountedRef.current });
+            return;
+        }
+
+        // Éviter les connexions multiples
+        if (connectionAttemptRef.current || isConnecting) {
+            console.log('⚠️ Connection already in progress, skipping');
+            return;
+        }
+
+        // Si déjà connecté à la même room, ne pas reconnecter
+        if (wsServiceRef.current?.isConnected && roomCodeRef.current === roomCode) {
+            console.log('✅ Already connected to this room');
+            return;
+        }
+
+        try {
+            connectionAttemptRef.current = true;
+            setIsConnecting(true);
+
+            console.log(`🔌 Connecting to WebSocket for room: ${roomCode}`);
+
+            // Nettoyer la connexion précédente si elle existe
+            if (wsServiceRef.current) {
+                wsServiceRef.current.disconnect();
+            }
+
+            // Créer nouvelle instance
+            wsServiceRef.current = new MultiplayerWebSocketService();
+            roomCodeRef.current = roomCode;
+
+            // Configurer les event listeners
+            wsServiceRef.current.on('connected', () => {
+                if (!unmountedRef.current) {
+                    console.log('✅ WebSocket connected successfully');
+                    setIsConnected(true);
+                    setIsConnecting(false);
+                    connectionAttemptRef.current = false;
+                    showSuccess('Connexion temps réel établie');
+                }
+            });
+
+            wsServiceRef.current.on('disconnected', ({ code, reason }: { code: number; reason: string }) => {
+                if (!unmountedRef.current) {
+                    console.log(`🔌 WebSocket disconnected: ${code} - ${reason}`);
+                    setIsConnected(false);
+                    setIsConnecting(false);
+                    connectionAttemptRef.current = false;
+
+                    // Ne pas tenter de reconnecter si c'est une déconnexion volontaire
+                    if (code !== 1000) {
+                        showError('Connexion temps réel perdue');
+                    }
+                }
+            });
+
+            wsServiceRef.current.on('error', (error: unknown) => {
+                if (!unmountedRef.current) {
+                    console.error('❌ WebSocket error:', error);
+                    setIsConnecting(false);
+                    connectionAttemptRef.current = false;
+                    showError('Erreur de connexion temps réel');
+                }
+            });
+
+            // Tenter la connexion
+            await wsServiceRef.current.connect(roomCode, user.id);
+
+        } catch (error) {
+            if (!unmountedRef.current) {
+                console.error('❌ Failed to connect WebSocket:', error);
+                setIsConnecting(false);
+                connectionAttemptRef.current = false;
+                showError('Impossible de se connecter au serveur');
+            }
+        }
+    }, [roomCode, user, isConnecting, showError, showSuccess]);
+
+    // CORRECTION: Effet avec nettoyage approprié
     useEffect(() => {
-        if (!wsService.current) {
-            wsService.current = new MultiplayerWebSocketService();
+        unmountedRef.current = false;
 
-            // Écouter les événements de connexion
-            wsService.current.on('connected', () => {
-                setIsConnected(true);
-                setConnectionState('connected');
-                showSuccess('🔌 Connecté au salon');
-            });
-
-            wsService.current.on('disconnected', () => {
-                setIsConnected(false);
-                setConnectionState('disconnected');
-                showError('🔌 Déconnecté du salon');
-            });
-
-            wsService.current.on('authentication_success', (data: { username: string }) => {
-                showSuccess(`👤 Authentifié: ${data.username}`);
-            });
-
-            wsService.current.on('chat_message', (message: ChatMessage) => {
-                setChatMessages(prev => [...prev, message]);
-            });
-
-            wsService.current.on('player_joined', (data: { username: string }) => {
-                showInfo(`👤 ${data.username} a rejoint le salon`);
-
-                // Ajouter un message système
-                const systemMessage: ChatMessage = {
-                    id: `system-${Date.now()}`,
-                    user_id: 'system',
-                    username: 'Système',
-                    message: `${data.username} a rejoint le salon`,
-                    timestamp: new Date().toISOString(),
-                    type: 'system'
-                };
-                setChatMessages(prev => [...prev, systemMessage]);
-            });
-
-            wsService.current.on('player_left', (data: { username: string }) => {
-                showInfo(`👤 ${data.username} a quitté le salon`);
-
-                // Ajouter un message système
-                const systemMessage: ChatMessage = {
-                    id: `system-${Date.now()}`,
-                    user_id: 'system',
-                    username: 'Système',
-                    message: `${data.username} a quitté le salon`,
-                    timestamp: new Date().toISOString(),
-                    type: 'system'
-                };
-                setChatMessages(prev => [...prev, systemMessage]);
-            });
-
-            wsService.current.on('game_started', (_data: unknown) => {
-                showSuccess('🎮 La partie a commencé !');
-            });
-
-            wsService.current.on('error', (data: { error: string }) => {
-                showError(`❌ Erreur: ${data.error}`);
-            });
+        if (roomCode && user) {
+            connect();
         }
 
         return () => {
-            if (wsService.current) {
-                wsService.current.disconnect();
-            }
+            unmountedRef.current = true;
+            cleanupConnection();
         };
-    }, [showError, showSuccess, showInfo]);
+    }, [roomCode, user?.id]); // Dépendances minimales pour éviter les reconnexions
 
-    // Se connecter au WebSocket quand roomCode et user sont disponibles
+    // CORRECTION: Nettoyage au démontage
     useEffect(() => {
-        if (roomCode && user && wsService.current && !isConnected) {
-            const token = localStorage.getItem('auth_token') || '';
+        return () => {
+            unmountedRef.current = true;
+            cleanupConnection();
+        };
+    }, [cleanupConnection]);
 
-            wsService.current.connect(roomCode, token)
-                .then(() => {
-                    console.log('✅ WebSocket connected successfully');
-
-                    // Rejoindre automatiquement la room
-                    setTimeout(() => {
-                        wsService.current?.joinGameRoom();
-                    }, 1000);
-                })
-                .catch((error) => {
-                    console.error('❌ WebSocket connection failed:', error);
-                    showError('Impossible de se connecter au salon');
-                });
-        }
-    }, [roomCode, user, isConnected, showError]);
-
-    // Méthodes pour interagir avec le WebSocket
-    const sendChatMessage = useCallback((message: string) => {
-        if (wsService.current && isConnected) {
-            return wsService.current.sendChatMessage(message);
+    // Fonction pour envoyer des messages
+    const sendMessage = useCallback((message: any) => {
+        if (wsServiceRef.current?.isConnected) {
+            wsServiceRef.current.send(message);
+            return true;
         }
         return false;
-    }, [isConnected]);
+    }, []);
 
-    const startGame = useCallback((gameId: string) => {
-        if (wsService.current && isConnected) {
-            return wsService.current.startGame(gameId);
+    // Fonction pour s'abonner aux événements
+    const subscribe = useCallback((event: string, handler: (data: any) => void) => {
+        if (wsServiceRef.current) {
+            wsServiceRef.current.on(event, handler);
+            return () => wsServiceRef.current?.off(event, handler);
         }
-        return false;
-    }, [isConnected]);
-
-    const makeAttempt = useCallback((gameId: string, combination: number[]) => {
-        if (wsService.current && isConnected) {
-            return wsService.current.makeAttempt(gameId, combination);
-        }
-        return false;
-    }, [isConnected]);
+        return () => {};
+    }, []);
 
     return {
         isConnected,
-        connectionState,
-        chatMessages,
-        sendChatMessage,
-        startGame,
-        makeAttempt,
-        wsService: wsService.current
+        isConnecting,
+        connect,
+        disconnect: cleanupConnection,
+        sendMessage,
+        subscribe,
+        wsService: wsServiceRef.current
     };
 };
-
