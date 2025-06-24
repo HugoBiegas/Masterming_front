@@ -66,19 +66,27 @@ export interface MultiplayerGame {
     masterminds: GameMastermind[];
 }
 
+// CORRECTION: Interface PlayerProgress avec toutes les propriétés nécessaires
 export interface PlayerProgress {
     id: string;
     user_id: string;
     username: string;
-    status: 'active' | 'eliminated' | 'finished' | 'disconnected' | 'spectating';
+    // CORRECTION: Union type avec tous les statuts possibles
+    status: 'active' | 'eliminated' | 'finished' | 'disconnected' | 'spectating' | 'waiting' | 'playing' | 'mastermind_complete';
     score: number;
     attempts_count: number;
-    current_mastermind?: number[];
+    current_mastermind?: number | number[];
     is_winner: boolean;
     joined_at: string;
     finished_at?: string;
     elimination_reason?: string;
     rank?: number;
+
+    // AJOUTS: Propriétés manquantes pour compatibilité
+    is_creator?: boolean;
+    is_ready?: boolean;
+    completed_masterminds?: number;
+    items?: PlayerItem[];
 }
 
 export interface PlayerItem {
@@ -119,9 +127,9 @@ export interface MultiplayerGameCreateRequest {
     is_private: boolean;
     password?: string;
     items_enabled: boolean;
-    allow_spectators: boolean; // AJOUTÉ: Champ manquant
-    enable_chat: boolean; // AJOUTÉ: Champ manquant
-    quantum_enabled: boolean; // AJOUTÉ: Champ manquant
+    allow_spectators: boolean;
+    enable_chat: boolean;
+    quantum_enabled?: boolean;
 }
 
 export interface MultiplayerGameCreateResponse {
@@ -150,18 +158,28 @@ export interface MultiplayerGameFilters {
 }
 
 export interface MultiplayerAttemptRequest {
-    mastermind_number: number;
+    mastermind_number?: number;
     combination: number[];
+    room_code?: string;
+    game_id?: string;
 }
 
+// CORRECTION: Interface MultiplayerAttemptResponse avec toutes les propriétés nécessaires
 export interface MultiplayerAttemptResponse {
     attempt: {
         id: string;
         combination: number[];
-        black_pegs: number;
-        white_pegs: number;
+        black_pegs?: number;
+        white_pegs?: number;
+        exact_matches?: number;
+        position_matches?: number;
+        correct_positions?: number;
+        correct_colors?: number;
         attempt_number: number;
+        attempt_score?: number;
+        is_correct?: boolean;
         created_at: string;
+        time_taken?: number;
     };
     mastermind_completed: boolean;
     items_obtained?: PlayerItem[];
@@ -169,6 +187,11 @@ export interface MultiplayerAttemptResponse {
     next_mastermind?: GameMastermind;
     game_finished?: boolean;
     final_position?: number;
+
+    // AJOUTS: Propriétés pour compatibilité avec le code existant
+    is_correct?: boolean;
+    correct_positions?: number;
+    correct_colors?: number;
 }
 
 export interface ItemUseRequest {
@@ -195,8 +218,9 @@ export interface PlayerLeaderboard {
     status: 'active' | 'eliminated' | 'finished' | 'disconnected' | 'spectating';
     score: number;
     attempts_count: number;
-    current_mastermind?: number[];
+    current_mastermind?: number | number[];
     is_winner: boolean;
+    is_creator?: boolean;
     joined_at: string;
     finished_at?: string;
     elimination_reason?: string;
@@ -216,8 +240,8 @@ export interface GameRoom {
     room_code: string;
     name: string;
     game_type: GameType;
-    game_type_display?: string;  // AJOUTÉ: Type pour l'affichage
-    game_type_raw?: string;      // AJOUTÉ: Type brut
+    game_type_display?: string;
+    game_type_raw?: string;
     difficulty: Difficulty;
     status: GameStatus;
     max_players: number;
@@ -228,12 +252,12 @@ export interface GameRoom {
     enable_chat: boolean;
     quantum_enabled: boolean;
 
-    // AJOUTÉ: Configuration de jeu complète
+    // Configuration de jeu complète
     combination_length: number;
     available_colors: number;
     max_attempts: number;
 
-    // AJOUTÉ: Paramètres multijoueur
+    // Paramètres multijoueur
     total_masterminds: number;
     items_enabled: boolean;
     items_per_mastermind: number;
@@ -248,7 +272,7 @@ export interface GameRoom {
         username: string;
     };
 
-    // AJOUTÉ: Participants et logique
+    // Participants et logique
     participants?: Array<{
         user_id: string;
         username: string;
@@ -261,7 +285,7 @@ export interface GameRoom {
         is_winner: boolean;
     }>;
 
-    // AJOUTÉ: Settings et infos supplémentaires
+    // Settings et infos supplémentaires
     settings?: {
         total_masterminds?: number;
         items_enabled?: boolean;
@@ -330,6 +354,7 @@ export interface MultiplayerResultsProps {
     currentUserId: string;
     showDetailedStats?: boolean;
 }
+
 export interface MultiplayerResultsPageProps {
     gameResults: GameResults;
     currentUserId?: string;
@@ -337,8 +362,8 @@ export interface MultiplayerResultsPageProps {
 }
 
 export interface EnhancedCreateRoomRequest extends CreateRoomRequest {
-    base_game_type: GameType; // Type de partie de base
-    is_private: boolean; // Alias pour !is_public
+    base_game_type: GameType;
+    is_private: boolean;
 }
 
 export interface LobbyFilters {
@@ -499,7 +524,7 @@ export interface GameResults {
     duration: number;
     total_players: number;
 
-    // FIX: Utiliser PlayerProgress[] pour être compatible
+    // Utiliser PlayerProgress[] pour être compatible
     final_leaderboard: PlayerProgress[];
 
     // Stats et métadonnées
@@ -546,7 +571,6 @@ export interface GameResults {
     };
 }
 
-
 // Interface pour la pagination
 export interface PaginationResponse<T> {
     items: T[];
@@ -565,21 +589,14 @@ export type MultiplayerGameResponse = {
     error?: string;
 };
 
+// AJOUT: Type guard pour les conversions
 export type GameActionResult = {
     success: boolean;
     message: string;
     data?: any;
 };
 
-export const convertToLeaderboard = (player: PlayerProgress): PlayerLeaderboard => ({
-    ...player,
-    final_score: player.score,
-    attempts_made: player.attempts_count,
-    achievements: [],
-    bonus_points: 0,
-    penalty_points: 0
-});
-
+// Fonctions utilitaires
 export const convertToCreateRoomRequest = (enhanced: EnhancedCreateRoomRequest): CreateRoomRequest => ({
     name: enhanced.name,
     game_type: enhanced.game_type,
@@ -592,25 +609,18 @@ export const convertToCreateRoomRequest = (enhanced: EnhancedCreateRoomRequest):
     quantum_enabled: enhanced.quantum_enabled,
     items_enabled: enhanced.items_enabled,
     items_per_mastermind: enhanced.items_per_mastermind,
-    is_public: !enhanced.is_private, // Conversion
+    is_public: !enhanced.is_private,
     password: enhanced.password?.trim() || undefined,
     allow_spectators: enhanced.allow_spectators,
     enable_chat: enhanced.enable_chat,
     solution: enhanced.solution?.length ? enhanced.solution : undefined
 });
 
-// Interface pour les hooks personnalisés
-export interface UseMultiplayerReturn {
-    multiplayerGame: MultiplayerGame | null;
-    loading: boolean;
-    error: string | null;
-    isConnected: boolean;
-    activeEffects: { [key: string]: ActiveEffect };
-    joinGame: (request: JoinGameRequest) => Promise<boolean>;
-    leaveGame: () => Promise<void>;
-    makeAttempt: (mastermindNumber: number, combination: number[]) => Promise<MultiplayerAttemptResponse | null>;
-    useItem: (itemType: ItemType, targetPlayers?: string[]) => Promise<void>;
-    connectWebSocket: () => void;
-    disconnectWebSocket: () => void;
-    refreshGame: () => Promise<void>;
-}
+export default {
+    MultiplayerGameType,
+    ItemType,
+    ItemRarity,
+    PlayerStatus,
+    Difficulty,
+    convertToCreateRoomRequest
+};

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { WEBSOCKET_CONFIG, WEBSOCKET_EVENTS, SYSTEM_MESSAGES } from '@/utils/multiplayerConstants';
 
 // Interface pour les messages de chat
 export interface ChatMessage {
@@ -21,12 +22,22 @@ interface WebSocketEvent {
     message_id?: string;
 }
 
+// Interface pour les événements de jeu
+interface GameEvent {
+    type: string;
+    player_id?: string;
+    username?: string;
+    data?: any;
+}
+
 interface UseWebSocketChatOptions {
     roomCode?: string;
     gameId?: string;
     autoConnect?: boolean;
     reconnectAttempts?: number;
     reconnectDelay?: number;
+    enableGameEvents?: boolean;
+    enableChat?: boolean;
 }
 
 interface UseWebSocketChatReturn {
@@ -34,10 +45,12 @@ interface UseWebSocketChatReturn {
     isConnected: boolean;
     isConnecting: boolean;
     connectionError: string | null;
+    connectionQuality: 'excellent' | 'good' | 'poor' | 'unknown';
 
-    // Messages
+    // Messages et événements
     messages: ChatMessage[];
     unreadCount: number;
+    gameEvents: GameEvent[];
 
     // Actions
     sendMessage: (message: string) => Promise<boolean>;
@@ -45,36 +58,62 @@ interface UseWebSocketChatReturn {
     disconnect: () => void;
     markAsRead: () => void;
     clearMessages: () => void;
+    clearGameEvents: () => void;
 
     // Méthodes utilitaires
     addSystemMessage: (message: string) => void;
     addGameMessage: (message: string) => void;
+
+    // Statistiques de connexion
+    stats: {
+        messagesReceived: number;
+        messagesSent: number;
+        reconnectCount: number;
+        uptime: number;
+        lastHeartbeat: number | null;
+    };
 }
 
 export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebSocketChatReturn => {
     const { user } = useAuth();
-    const { showSuccess, showError, showWarning } = useNotification();
+    const { showSuccess, showError, showWarning, showInfo } = useNotification();
 
     const {
         roomCode,
         gameId,
         autoConnect = true,
-        reconnectAttempts = 3,
-        reconnectDelay = 2000
+        reconnectAttempts = WEBSOCKET_CONFIG.MAX_RECONNECT_ATTEMPTS,
+        reconnectDelay = WEBSOCKET_CONFIG.RECONNECT_DELAY,
+        enableGameEvents = true,
+        enableChat = true
     } = options;
 
     // États
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [connectionError, setConnectionError] = useState<string | null>(null);
+    const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor' | 'unknown'>('unknown');
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [gameEvents, setGameEvents] = useState<GameEvent[]>([]);
+
+    // Statistiques
+    const [stats, setStats] = useState({
+        messagesReceived: 0,
+        messagesSent: 0,
+        reconnectCount: 0,
+        uptime: 0,
+        lastHeartbeat: null as number | null
+    });
 
     // Refs
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const reconnectAttemptsRef = useRef(0);
     const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const uptimeStartRef = useRef<number | null>(null);
+    const lastPongRef = useRef<number>(0);
 
     // Obtenir l'URL WebSocket
     const getWebSocketUrl = useCallback(() => {
@@ -121,36 +160,131 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
         setUnreadCount(prev => prev + 1);
     }, []);
 
+    // Envoyer un ping pour mesurer la latence
+    const sendPing = useCallback(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const pingEvent: WebSocketEvent = {
+                type: 'ping',
+                data: { timestamp: Date.now() },
+                timestamp: Date.now()
+            };
+
+            try {
+                wsRef.current.send(JSON.stringify(pingEvent));
+            } catch (error) {
+                console.error('Erreur envoi ping:', error);
+            }
+        }
+    }, []);
+
     // Envoyer un heartbeat
     const sendHeartbeat = useCallback(() => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             const heartbeat: WebSocketEvent = {
-                type: 'heartbeat',
+                type: WEBSOCKET_EVENTS.HEARTBEAT,
                 data: {
                     timestamp: Date.now(),
-                    user_id: user?.id
+                    user_id: user?.id,
+                    room_code: roomCode,
+                    game_id: gameId
                 }
             };
 
             try {
                 wsRef.current.send(JSON.stringify(heartbeat));
+                setStats(prev => ({
+                    ...prev,
+                    lastHeartbeat: Date.now(),
+                    messagesSent: prev.messagesSent + 1
+                }));
             } catch (error) {
                 console.error('Erreur envoi heartbeat:', error);
             }
         }
-    }, [user?.id]);
+    }, [user?.id, roomCode, gameId]);
+
+    // Calculer la qualité de connexion basée sur la latence
+    const updateConnectionQuality = useCallback((latency: number) => {
+        if (latency < 100) {
+            setConnectionQuality('excellent');
+        } else if (latency < 300) {
+            setConnectionQuality('good');
+        } else {
+            setConnectionQuality('poor');
+        }
+    }, []);
+
+    // Gérer les événements de jeu
+    const handleGameEvent = useCallback((event: WebSocketEvent) => {
+        if (!enableGameEvents) return;
+
+        const gameEvent: GameEvent = {
+            type: event.type,
+            player_id: event.data.player_id || event.data.user_id,
+            username: event.data.username,
+            data: event.data
+        };
+
+        setGameEvents(prev => [...prev.slice(-49), gameEvent]); // Garder les 50 derniers événements
+
+        // Générer des messages système pour certains événements
+        switch (event.type) {
+            case WEBSOCKET_EVENTS.PLAYER_JOINED:
+                addSystemMessage(SYSTEM_MESSAGES.PLAYER_JOINED(event.data.username));
+                break;
+
+            case WEBSOCKET_EVENTS.PLAYER_LEFT:
+                addSystemMessage(SYSTEM_MESSAGES.PLAYER_LEFT(event.data.username));
+                break;
+
+            case WEBSOCKET_EVENTS.GAME_STARTED:
+                addGameMessage(SYSTEM_MESSAGES.GAME_STARTED);
+                break;
+
+            case WEBSOCKET_EVENTS.GAME_FINISHED:
+                addGameMessage(SYSTEM_MESSAGES.GAME_FINISHED);
+                break;
+
+            case WEBSOCKET_EVENTS.PLAYER_MASTERMIND_COMPLETE:
+                addGameMessage(SYSTEM_MESSAGES.MASTERMIND_COMPLETED(
+                    event.data.username,
+                    event.data.mastermind_number
+                ));
+                break;
+
+            case WEBSOCKET_EVENTS.ITEM_USED:
+                if (event.data.item_name) {
+                    addGameMessage(SYSTEM_MESSAGES.ITEM_USED(
+                        event.data.username,
+                        event.data.item_name
+                    ));
+                }
+                break;
+
+            default:
+                console.log('Événement de jeu non géré:', event);
+        }
+    }, [enableGameEvents, addSystemMessage, addGameMessage]);
 
     // Gérer les messages WebSocket entrants
     const handleWebSocketMessage = useCallback((event: MessageEvent) => {
         try {
             const wsEvent: WebSocketEvent = JSON.parse(event.data);
 
+            setStats(prev => ({
+                ...prev,
+                messagesReceived: prev.messagesReceived + 1
+            }));
+
             switch (wsEvent.type) {
                 case 'chat_message':
                 case 'chat_broadcast':
+                case WEBSOCKET_EVENTS.CHAT_MESSAGE:
+                    if (!enableChat) break;
+
                     const chatData = wsEvent.data;
                     const newMessage: ChatMessage = {
-                        id: chatData.message_id || `msg_${Date.now()}`,
+                        id: chatData.message_id || `msg_${Date.now()}_${Math.random()}`,
                         user_id: chatData.user_id,
                         username: chatData.username,
                         message: chatData.message,
@@ -167,6 +301,12 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
                     }
                     break;
 
+                case 'pong':
+                    const latency = Date.now() - (wsEvent.data.timestamp || 0);
+                    lastPongRef.current = Date.now();
+                    updateConnectionQuality(latency);
+                    break;
+
                 case 'system_message':
                     addSystemMessage(wsEvent.data.message);
                     break;
@@ -180,25 +320,51 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
                     setIsConnecting(false);
                     setConnectionError(null);
                     reconnectAttemptsRef.current = 0;
+                    uptimeStartRef.current = Date.now();
 
-                    // Démarrer le heartbeat
+                    // Démarrer les intervalles
                     if (heartbeatIntervalRef.current) {
                         clearInterval(heartbeatIntervalRef.current);
                     }
-                    heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000);
+                    heartbeatIntervalRef.current = setInterval(sendHeartbeat, WEBSOCKET_CONFIG.HEARTBEAT_INTERVAL);
+
+                    if (pingIntervalRef.current) {
+                        clearInterval(pingIntervalRef.current);
+                    }
+                    pingIntervalRef.current = setInterval(sendPing, WEBSOCKET_CONFIG.PING_INTERVAL);
 
                     showSuccess('💬 Chat connecté !');
                     addSystemMessage(`${user?.username || 'Vous'} a rejoint le chat`);
                     break;
 
                 case 'authentication_success':
-                    console.log('WebSocket authentifié avec succès');
+                    console.log('✅ WebSocket authentifié avec succès');
                     break;
 
+                case 'authentication_failed':
+                    console.error('❌ Échec d\'authentification WebSocket');
+                    setConnectionError('Échec d\'authentification');
+                    showError('Authentification chat échouée');
+                    break;
+
+                case WEBSOCKET_EVENTS.ERROR:
                 case 'error':
                     const errorMessage = wsEvent.data.message || 'Erreur WebSocket inconnue';
                     setConnectionError(errorMessage);
                     showError(`Erreur chat: ${errorMessage}`);
+                    break;
+
+                // Événements de jeu
+                case WEBSOCKET_EVENTS.PLAYER_JOINED:
+                case WEBSOCKET_EVENTS.PLAYER_LEFT:
+                case WEBSOCKET_EVENTS.GAME_STARTED:
+                case WEBSOCKET_EVENTS.GAME_FINISHED:
+                case WEBSOCKET_EVENTS.PLAYER_MASTERMIND_COMPLETE:
+                case WEBSOCKET_EVENTS.PLAYER_STATUS_CHANGED:
+                case WEBSOCKET_EVENTS.GAME_PROGRESS_UPDATE:
+                case WEBSOCKET_EVENTS.ITEM_USED:
+                case WEBSOCKET_EVENTS.EFFECT_APPLIED:
+                    handleGameEvent(wsEvent);
                     break;
 
                 default:
@@ -207,7 +373,7 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
         } catch (error) {
             console.error('Erreur traitement message WebSocket:', error);
         }
-    }, [user?.id, user?.username, addSystemMessage, addGameMessage, sendHeartbeat, showSuccess, showError]);
+    }, [user?.id, user?.username, enableChat, enableGameEvents, addSystemMessage, addGameMessage, sendHeartbeat, sendPing, updateConnectionQuality, handleGameEvent, showSuccess, showError]);
 
     // Connexion WebSocket
     const connect = useCallback(async () => {
@@ -225,85 +391,105 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
 
         try {
             const wsUrl = getWebSocketUrl();
-            console.log('Connexion WebSocket à:', wsUrl);
+            console.log('🔌 Connexion WebSocket à:', wsUrl);
 
-            // Simuler une connexion réussie pour le développement
-            // TODO: Remplacer par une vraie connexion WebSocket
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Simulation d'une connexion WebSocket réussie
-            setIsConnected(true);
-            setIsConnecting(false);
-            setConnectionError(null);
-            reconnectAttemptsRef.current = 0;
-
-            showSuccess('💬 Chat connecté !');
-            addSystemMessage(`${user.username} a rejoint le chat`);
-
-            // Dans un vrai environnement, ceci serait remplacé par:
-            /*
+            // Créer la connexion WebSocket réelle
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
+            // Timeout de connexion
+            const connectionTimeout = setTimeout(() => {
+                if (ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                    setConnectionError('Timeout de connexion');
+                    setIsConnecting(false);
+                    showError('Timeout de connexion au chat');
+                }
+            }, 10000);
+
             ws.onopen = () => {
-                console.log('WebSocket connecté');
+                clearTimeout(connectionTimeout);
+                console.log('✅ WebSocket connecté');
 
                 // Authentification
                 const authMessage: WebSocketEvent = {
-                    type: 'authenticate',
+                    type: WEBSOCKET_EVENTS.AUTHENTICATE,
                     data: {
                         user_id: user.id,
                         username: user.username,
                         room_code: roomCode,
                         game_id: gameId,
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        enable_chat: enableChat,
+                        enable_game_events: enableGameEvents
                     }
                 };
 
                 ws.send(JSON.stringify(authMessage));
+                setStats(prev => ({ ...prev, messagesSent: prev.messagesSent + 1 }));
             };
 
             ws.onmessage = handleWebSocketMessage;
 
             ws.onclose = (event) => {
-                console.log('WebSocket fermé:', event.code, event.reason);
+                clearTimeout(connectionTimeout);
+                console.log('🔌 WebSocket fermé:', event.code, event.reason);
                 setIsConnected(false);
                 setIsConnecting(false);
 
+                // Nettoyer les intervalles
                 if (heartbeatIntervalRef.current) {
                     clearInterval(heartbeatIntervalRef.current);
                     heartbeatIntervalRef.current = null;
                 }
 
+                if (pingIntervalRef.current) {
+                    clearInterval(pingIntervalRef.current);
+                    pingIntervalRef.current = null;
+                }
+
+                // Mettre à jour l'uptime
+                if (uptimeStartRef.current) {
+                    setStats(prev => ({
+                        ...prev,
+                        uptime: prev.uptime + (Date.now() - uptimeStartRef.current!)
+                    }));
+                    uptimeStartRef.current = null;
+                }
+
                 // Tentative de reconnexion automatique
                 if (reconnectAttemptsRef.current < reconnectAttempts && !event.wasClean) {
                     reconnectAttemptsRef.current++;
-                    showWarning(`Reconnexion... (${reconnectAttemptsRef.current}/${reconnectAttempts})`);
+                    setStats(prev => ({ ...prev, reconnectCount: prev.reconnectCount + 1 }));
+
+                    showWarning(`🔄 Reconnexion... (${reconnectAttemptsRef.current}/${reconnectAttempts})`);
+                    addSystemMessage(SYSTEM_MESSAGES.CONNECTION_LOST);
 
                     reconnectTimeoutRef.current = setTimeout(() => {
                         connect();
                     }, reconnectDelay);
                 } else if (reconnectAttemptsRef.current >= reconnectAttempts) {
                     setConnectionError('Impossible de se reconnecter au chat');
-                    showError('Chat déconnecté');
-                    addSystemMessage('Connexion au chat perdue');
+                    showError('❌ Chat définitivement déconnecté');
+                    addSystemMessage('Connexion au chat perdue définitivement');
                 }
             };
 
             ws.onerror = (error) => {
-                console.error('Erreur WebSocket:', error);
+                clearTimeout(connectionTimeout);
+                console.error('❌ Erreur WebSocket:', error);
                 setConnectionError('Erreur de connexion WebSocket');
                 setIsConnecting(false);
+                showError('Impossible de se connecter au chat');
             };
-            */
 
         } catch (error: any) {
-            console.error('Erreur connexion WebSocket:', error);
+            console.error('❌ Erreur connexion WebSocket:', error);
             setConnectionError(error.message || 'Erreur de connexion');
             setIsConnecting(false);
             showError('Impossible de se connecter au chat');
         }
-    }, [user, isConnecting, isConnected, getWebSocketUrl, roomCode, gameId, reconnectAttempts, reconnectDelay, handleWebSocketMessage, showSuccess, showWarning, showError, addSystemMessage]);
+    }, [user, isConnecting, isConnected, getWebSocketUrl, roomCode, gameId, enableChat, enableGameEvents, reconnectAttempts, reconnectDelay, handleWebSocketMessage, addSystemMessage, showSuccess, showWarning, showError]);
 
     // Déconnexion WebSocket
     const disconnect = useCallback(() => {
@@ -317,6 +503,11 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
             heartbeatIntervalRef.current = null;
         }
 
+        if (pingIntervalRef.current) {
+            clearInterval(pingIntervalRef.current);
+            pingIntervalRef.current = null;
+        }
+
         if (wsRef.current) {
             wsRef.current.close(1000, 'Déconnexion volontaire');
             wsRef.current = null;
@@ -324,107 +515,119 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
 
         setIsConnected(false);
         setIsConnecting(false);
+        setConnectionError(null);
+        setConnectionQuality('unknown');
         reconnectAttemptsRef.current = 0;
 
-        addSystemMessage('Vous avez quitté le chat');
+        // Mettre à jour l'uptime final
+        if (uptimeStartRef.current) {
+            setStats(prev => ({
+                ...prev,
+                uptime: prev.uptime + (Date.now() - uptimeStartRef.current!)
+            }));
+            uptimeStartRef.current = null;
+        }
+
+        addSystemMessage('Chat déconnecté');
     }, [addSystemMessage]);
 
     // Envoyer un message
     const sendMessage = useCallback(async (message: string): Promise<boolean> => {
-        if (!user || !isConnected) {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
             showError('Chat non connecté');
             return false;
         }
 
-        const trimmedMessage = message.trim();
-        if (!trimmedMessage) {
+        if (!message.trim()) {
             return false;
         }
 
         try {
-            // Simulation d'envoi de message
-            const userMessage: ChatMessage = {
-                id: `msg_${Date.now()}_${Math.random()}`,
-                user_id: user.id,
-                username: user.username,
-                message: trimmedMessage,
-                timestamp: new Date().toISOString(),
-                type: 'user',
-                is_creator: false // TODO: Déterminer si l'utilisateur est créateur
-            };
-
-            setMessages(prev => [...prev, userMessage]);
-
-            // Dans un vrai environnement, ceci serait remplacé par:
-            /*
-            const chatMessage: WebSocketEvent = {
-                type: 'chat_message',
+            const chatEvent: WebSocketEvent = {
+                type: WEBSOCKET_EVENTS.CHAT_MESSAGE,
                 data: {
-                    room_id: roomCode || gameId,
-                    message: trimmedMessage,
-                    timestamp: Date.now()
-                }
+                    message: message.trim(),
+                    user_id: user?.id,
+                    username: user?.username,
+                    room_code: roomCode,
+                    game_id: gameId,
+                    timestamp: new Date().toISOString()
+                },
+                timestamp: Date.now(),
+                message_id: `msg_${Date.now()}_${Math.random()}`
             };
 
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify(chatMessage));
-                return true;
-            } else {
-                throw new Error('WebSocket non connecté');
-            }
-            */
+            wsRef.current.send(JSON.stringify(chatEvent));
+            setStats(prev => ({ ...prev, messagesSent: prev.messagesSent + 1 }));
 
             return true;
-        } catch (error: any) {
+        } catch (error) {
             console.error('Erreur envoi message:', error);
             showError('Impossible d\'envoyer le message');
             return false;
         }
-    }, [user, isConnected, roomCode, gameId, showError]);
+    }, [user?.id, user?.username, roomCode, gameId, showError]);
 
     // Marquer les messages comme lus
     const markAsRead = useCallback(() => {
         setUnreadCount(0);
     }, []);
 
-    // Effacer tous les messages
+    // Vider les messages
     const clearMessages = useCallback(() => {
         setMessages([]);
         setUnreadCount(0);
     }, []);
 
+    // Vider les événements de jeu
+    const clearGameEvents = useCallback(() => {
+        setGameEvents([]);
+    }, []);
+
     // Connexion automatique
     useEffect(() => {
-        if (autoConnect && user && (roomCode || gameId)) {
+        if (autoConnect && user && !isConnected && !isConnecting) {
             connect();
         }
 
         return () => {
             disconnect();
         };
-    }, [autoConnect, user, roomCode, gameId, connect, disconnect]);
+    }, [autoConnect, user, roomCode, gameId]); // Intentionnellement ne pas inclure connect/disconnect
 
-    // Nettoyage à la fermeture du composant
+    // Nettoyage à la déconnexion du composant
     useEffect(() => {
         return () => {
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-            }
-            if (heartbeatIntervalRef.current) {
-                clearInterval(heartbeatIntervalRef.current);
-            }
+            disconnect();
         };
     }, []);
+
+    // Mise à jour de l'uptime
+    useEffect(() => {
+        if (!isConnected || !uptimeStartRef.current) return;
+
+        const interval = setInterval(() => {
+            setStats(prev => ({
+                ...prev,
+                uptime: prev.uptime + (Date.now() - uptimeStartRef.current!)
+            }));
+            uptimeStartRef.current = Date.now();
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [isConnected]);
 
     return {
         // État de connexion
         isConnected,
         isConnecting,
         connectionError,
+        connectionQuality,
 
-        // Messages
+        // Messages et événements
         messages,
         unreadCount,
+        gameEvents,
 
         // Actions
         sendMessage,
@@ -432,9 +635,15 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
         disconnect,
         markAsRead,
         clearMessages,
+        clearGameEvents,
 
         // Méthodes utilitaires
         addSystemMessage,
-        addGameMessage
+        addGameMessage,
+
+        // Statistiques
+        stats
     };
 };
+
+export default useWebSocketChat;
