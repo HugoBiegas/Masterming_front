@@ -1,288 +1,94 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Header } from '@/components/common/Header';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Modal } from '@/components/common/Modal';
 import { GameBoard } from '@/components/game/GameBoard';
 import { ColorSelectionModal } from '@/components/game/ColorSelectionModal';
 import { VictoryDefeatDisplay } from '@/components/game/VictoryDefeatDisplay';
+import { PlayersList } from '@/components/multiplayer/PlayersList';
+import { MultiplayerAttemptHistory } from '@/components/multiplayer/MultiplayerAttemptHistory';
 import { useMultiplayer } from '@/hooks/useMultiplayer';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { DIFFICULTY_CONFIGS } from '@/utils/constants';
-import { PlayerProgress } from '@/types/multiplayer';
+import { DIFFICULTY_CONFIGS, COLOR_PALETTE } from '@/utils/constants';
+import { PlayerProgress, MultiplayerAttemptResponse, GameRoom } from '@/types/multiplayer';
 
-// ==================== COMPOSANTS MULTIJOUEUR SPÉCIALISÉS ====================
-
-// Composant pour l'historique des tentatives multijoueur
-interface MultiplayerAttemptHistoryProps {
-    attempts: any[];
-    currentPlayer: PlayerProgress | null;
-    difficultyConfig: any;
-}
-
-const MultiplayerAttemptHistory: React.FC<MultiplayerAttemptHistoryProps> = ({
-                                                                                 attempts,
-                                                                                 currentPlayer,
-                                                                                 difficultyConfig
-                                                                             }) => {
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-800">
-                    🎯 Mes Tentatives
-                </h3>
-                <span className="text-sm text-gray-600">
-                    {attempts.length} / {difficultyConfig.attempts}
-                </span>
-            </div>
-
-            {attempts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                    <div className="text-4xl mb-2">🎲</div>
-                    <p>Aucune tentative pour le moment</p>
-                    <p className="text-sm">Faites votre première combinaison !</p>
-                </div>
-            ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {attempts.map((attempt, index) => (
-                        <div
-                            key={attempt.id || index}
-                            className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm"
-                        >
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="font-semibold text-gray-700">
-                                    Tentative {attempt.attempt_number || index + 1}
-                                </span>
-                                <span className="text-sm text-gray-500">
-                                    {attempt.attempt_score || 0} pts
-                                </span>
-                            </div>
-
-                            <div className="flex items-center space-x-2 mb-2">
-                                {attempt.combination.map((colorIndex: number, pos: number) => (
-                                    <div
-                                        key={pos}
-                                        className="w-6 h-6 rounded-full border-2 border-gray-300"
-                                        style={{ backgroundColor: difficultyConfig.colorPalette[colorIndex] }}
-                                    />
-                                ))}
-                            </div>
-
-                            <div className="flex space-x-4 text-sm">
-                                <span className="text-green-600">
-                                    🟢 {attempt.correct_positions || attempt.exact_matches || 0}
-                                </span>
-                                <span className="text-orange-600">
-                                    🟡 {attempt.correct_colors || attempt.position_matches || 0}
-                                </span>
-                                {attempt.time_taken && (
-                                    <span className="text-gray-500">
-                                        ⏱️ {Math.round(attempt.time_taken)}s
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Composant pour afficher les joueurs (CORRIGÉ - plus de débordement)
-interface MultiplayerPlayersDisplayProps {
-    players: PlayerProgress[];
-    currentUserId: string | undefined;
-    currentPlayer: PlayerProgress | null;
-}
-
-const MultiplayerPlayersDisplay: React.FC<MultiplayerPlayersDisplayProps> = ({
-                                                                                 players,
-                                                                                 currentUserId,
-                                                                                 currentPlayer
-                                                                             }) => {
-    // Trier les joueurs par score décroissant
-    const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
-
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'active': return '🟢';
-            case 'playing': return '🎮';
-            case 'mastermind_complete': return '✅';
-            case 'finished': return '🏁';
-            case 'eliminated': return '❌';
-            case 'disconnected': return '📶';
-            case 'spectating': return '👁️';
-            default: return '⏳';
-        }
+// Extension locale de GameRoom pour les propriétés spécifiques au client
+interface ExtendedGameRoom extends GameRoom {
+    current_mastermind_solution?: number[];
+    current_mastermind_number?: number;
+    game_state?: {
+        solution: number[];
+        current_round: number;
+        is_finished: boolean;
+        time_remaining?: number;
+        max_time?: number;
     };
-
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'active': return 'Actif';
-            case 'playing': return 'En jeu';
-            case 'mastermind_complete': return 'Mastermind fini';
-            case 'finished': return 'Terminé';
-            case 'eliminated': return 'Éliminé';
-            case 'disconnected': return 'Déconnecté';
-            case 'spectating': return 'Spectateur';
-            default: return 'En attente';
-        }
-    };
-
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-800">
-                    👥 Joueurs ({players.length})
-                </h3>
-                <span className="text-sm text-gray-600">
-                    Classement en temps réel
-                </span>
-            </div>
-
-            {players.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                    <div className="text-4xl mb-2">👥</div>
-                    <p>Aucun joueur connecté</p>
-                </div>
-            ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {sortedPlayers.map((player, index) => (
-                        <div
-                            key={player.user_id}
-                            className={`p-3 rounded-lg border transition-all ${
-                                player.user_id === currentUserId
-                                    ? 'border-blue-500 bg-blue-50 shadow-md ring-2 ring-blue-200'
-                                    : 'border-gray-200 bg-white hover:shadow-sm hover:border-gray-300'
-                            }`}
-                        >
-                            {/* CORRECTION: Utilisation de flex-wrap et overflow-hidden pour éviter le débordement */}
-                            <div className="flex items-center justify-between flex-wrap gap-2 overflow-hidden">
-                                <div className="flex items-center space-x-3 min-w-0 flex-1">
-                                    {/* Position et statut */}
-                                    <div className="flex items-center space-x-2 flex-shrink-0">
-                                        <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center font-bold text-xs">
-                                            {index + 1}
-                                        </div>
-                                        <span className="text-lg flex-shrink-0">
-                                            {getStatusIcon(player.status)}
-                                        </span>
-                                    </div>
-
-                                    {/* Informations du joueur avec overflow contrôlé */}
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center space-x-2 flex-wrap">
-                                            {/* Nom avec truncate pour éviter le débordement */}
-                                            <span className="font-semibold text-gray-800 truncate max-w-28">
-                                                {player.username}
-                                            </span>
-
-                                            {/* Badges avec flex-wrap */}
-                                            <div className="flex items-center space-x-1 flex-wrap">
-                                                {player.is_creator && (
-                                                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium flex-shrink-0">
-                                                        👑
-                                                    </span>
-                                                )}
-                                                {player.user_id === currentUserId && (
-                                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium flex-shrink-0">
-                                                        Vous
-                                                    </span>
-                                                )}
-                                                {player.is_winner && (
-                                                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium flex-shrink-0">
-                                                        🏆 Gagnant
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Statut avec truncate */}
-                                        <div className="text-xs text-gray-500 truncate">
-                                            {getStatusLabel(player.status)}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Statistiques */}
-                                <div className="flex flex-col text-right text-sm flex-shrink-0">
-                                    <div className="font-bold text-purple-600">
-                                        {player.score || 0} pts
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                        M{player.current_mastermind || 1}/{player.completed_masterminds || 0}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                        {player.attempts_count || 0} tent.
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Composant pour le chat multijoueur
-interface MultiplayerChatProps {
-    isVisible: boolean;
-    onToggle: () => void;
-    roomCode: string;
 }
 
-const MultiplayerChat: React.FC<MultiplayerChatProps> = ({
-                                                             isVisible,
-                                                             onToggle,
-                                                             roomCode
-                                                         }) => {
-    const [messages, setMessages] = useState<any[]>([]);
+// ==================== INTERFACES ====================
+
+interface MultiplayerGameState {
+    currentCombination: number[];
+    attempts: MultiplayerAttemptResponse[];
+    isSubmitting: boolean;
+    showColorModal: boolean;
+    colorModalPosition?: number;
+    selectedColor: number;
+    currentScore: number;
+    isWinner: boolean;
+    showVictoryDefeat: boolean;
+    timer: number;
+    isTimerRunning: boolean;
+    showHistorySidebar: boolean;
+}
+
+// Messages de chat (simulation)
+interface ChatMessage {
+    id: string;
+    user_id: string;
+    username: string;
+    message: string;
+    timestamp: string;
+    type: 'user' | 'system' | 'game';
+}
+
+// ==================== COMPOSANTS AUXILIAIRES ====================
+
+// Composant Chat simple (placeholder)
+const SimpleChat: React.FC<{
+    messages: ChatMessage[];
+    currentUser: any;
+    onSendMessage: (message: string) => void;
+    className?: string;
+}> = ({ messages, currentUser, onSendMessage, className = "" }) => {
     const [newMessage, setNewMessage] = useState('');
 
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         if (newMessage.trim()) {
-            // Ici vous intégreriez l'envoi via WebSocket
-            console.log('Envoi message:', newMessage);
+            onSendMessage(newMessage.trim());
             setNewMessage('');
         }
     };
 
-    if (!isVisible) {
-        return (
-            <button
-                onClick={onToggle}
-                className="fixed bottom-4 right-4 bg-green-500 text-white p-3 rounded-full shadow-lg hover:bg-green-600 transition-colors z-50"
-            >
-                💬 Chat
-            </button>
-        );
-    }
-
     return (
-        <div className="fixed bottom-4 right-4 w-80 h-96 bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col z-50">
+        <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
             {/* Header */}
-            <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-                <h3 className="font-semibold text-gray-800">💬 Chat - {roomCode}</h3>
-                <button
-                    onClick={onToggle}
-                    className="text-gray-500 hover:text-gray-700 text-xl"
-                >
-                    ✕
-                </button>
+            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-3 rounded-t-lg">
+                <h3 className="font-bold text-sm">💬 Chat</h3>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="h-40 overflow-y-auto p-3 space-y-2 text-sm">
                 {messages.length === 0 ? (
-                    <div className="text-center text-gray-500 text-sm">
+                    <div className="text-center text-gray-500 text-xs">
                         Aucun message pour le moment...
                     </div>
                 ) : (
                     messages.map((message, index) => (
-                        <div key={index} className="text-sm">
+                        <div key={index} className="text-xs">
                             <span className="font-semibold">{message.username}:</span>
                             <span className="ml-2">{message.message}</span>
                         </div>
@@ -291,25 +97,51 @@ const MultiplayerChat: React.FC<MultiplayerChatProps> = ({
             </div>
 
             {/* Input */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200">
+            <form onSubmit={handleSendMessage} className="p-2 border-t border-gray-200">
                 <div className="flex space-x-2">
                     <input
                         type="text"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Tapez votre message..."
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        maxLength={500}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        maxLength={200}
                     />
                     <button
                         type="submit"
                         disabled={!newMessage.trim()}
-                        className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm"
+                        className="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 disabled:opacity-50 text-xs"
                     >
                         📤
                     </button>
                 </div>
             </form>
+        </div>
+    );
+};
+
+// Composant Timer
+const GameTimer: React.FC<{
+    time: number;
+    isRunning: boolean;
+    className?: string;
+}> = ({ time, isRunning, className = "" }) => {
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    return (
+        <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-3 ${className}`}>
+            <div className="text-center">
+                <div className="text-2xl font-bold text-gray-800">
+                    {formatTime(time)}
+                </div>
+                <div className={`text-sm ${isRunning ? 'text-green-600' : 'text-red-600'}`}>
+                    {isRunning ? '⏱️ En cours' : '⏸️ Arrêté'}
+                </div>
+            </div>
         </div>
     );
 };
@@ -322,9 +154,9 @@ export const MultiplayerGame: React.FC = () => {
     const { user } = useAuth();
     const { showError, showSuccess, showWarning, showInfo } = useNotification();
 
-    // Hook useMultiplayer
+    // Hook useMultiplayer avec toutes les fonctionnalités
     const {
-        currentRoom,
+        currentRoom: baseCurrentRoom,
         players,
         loading,
         error,
@@ -336,38 +168,82 @@ export const MultiplayerGame: React.FC = () => {
         refreshRoom
     } = useMultiplayer(roomCode);
 
-    // États locaux - MÊME LOGIQUE QUE LE SOLO
-    const [currentCombination, setCurrentCombination] = useState<number[]>([]);
-    const [selectedColor, setSelectedColor] = useState<number | null>(null);
-    const [attempts, setAttempts] = useState<any[]>([]);
-    const [showColorModal, setShowColorModal] = useState(false);
-    const [colorModalPosition, setColorModalPosition] = useState<number | undefined>(undefined);
-    const [showChat, setShowChat] = useState(false);
-    const [showLeaveModal, setShowLeaveModal] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isLeaving, setIsLeaving] = useState(false);
-    const [timer, setTimer] = useState(0);
-    const [isTimerRunning, setIsTimerRunning] = useState(false);
-    const [currentScore, setCurrentScore] = useState(0);
-    const [isWinner, setIsWinner] = useState(false);
-    const [showVictoryDefeat, setShowVictoryDefeat] = useState(false);
+    // Étendre currentRoom avec les propriétés manquantes
+    const currentRoom = baseCurrentRoom as ExtendedGameRoom | null;
 
-    // Configuration basée sur la difficulté - MÊME LOGIQUE QUE LE SOLO
-    const difficultyConfig = currentRoom ? {
-        ...DIFFICULTY_CONFIGS[currentRoom.difficulty as keyof typeof DIFFICULTY_CONFIGS],
-        colorPalette: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#FFC0CB', '#A52A2A', '#808080', '#000000']
-    } : null;
+    // État du jeu
+    const [state, setState] = useState<MultiplayerGameState>({
+        currentCombination: [],
+        attempts: [],
+        isSubmitting: false,
+        showColorModal: false,
+        colorModalPosition: undefined,
+        selectedColor: -1,
+        currentScore: 0,
+        isWinner: false,
+        showVictoryDefeat: false,
+        timer: 0,
+        isTimerRunning: false,
+        showHistorySidebar: true
+    });
 
-    // Réfs pour les timers
+    // Messages de chat (simulation)
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+    // Ref pour le timer
     const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Configuration de difficulté
+    const difficultyConfig = currentRoom?.difficulty ? DIFFICULTY_CONFIGS[currentRoom.difficulty] : null;
+
+    // ==================== FONCTIONS UTILITAIRES ====================
+
+    // Fonction pour récupérer la solution (uniquement disponible en fin de partie)
+    const getSolution = useCallback((): number[] => {
+        // La solution n'est révélée qu'en fin de partie pour des raisons de sécurité
+        if (!currentRoom || !isGameFinished) {
+            return [];
+        }
+
+        // Essayer différentes sources pour la solution
+        return currentRoom.current_mastermind_solution ||
+            currentRoom.game_state?.solution ||
+            // Solution par défaut si pas disponible
+            [];
+    }, [currentRoom, isGameFinished]);
 
     // ==================== EFFETS ====================
 
-    // Timer de jeu
+    // Effet pour rediriger si pas de room
     useEffect(() => {
-        if (isTimerRunning && isGameActive && !isGameFinished) {
+        if (!roomCode) {
+            navigate('/multiplayer');
+            return;
+        }
+    }, [roomCode, navigate]);
+
+    // Effet pour gérer les erreurs
+    useEffect(() => {
+        if (error) {
+            showError(error);
+        }
+    }, [error, showError]);
+
+    // Effet pour initialiser la combinaison
+    useEffect(() => {
+        if (difficultyConfig && state.currentCombination.length === 0) {
+            setState(prev => ({
+                ...prev,
+                currentCombination: new Array(difficultyConfig.length).fill(-1)
+            }));
+        }
+    }, [difficultyConfig, state.currentCombination.length]);
+
+    // Effet pour le timer
+    useEffect(() => {
+        if (state.isTimerRunning && isGameActive && !isGameFinished) {
             timerRef.current = setInterval(() => {
-                setTimer(prev => prev + 1);
+                setState(prev => ({ ...prev, timer: prev.timer + 1 }));
             }, 1000);
         } else {
             if (timerRef.current) {
@@ -379,426 +255,335 @@ export const MultiplayerGame: React.FC = () => {
         return () => {
             if (timerRef.current) {
                 clearInterval(timerRef.current);
-                timerRef.current = null;
             }
         };
-    }, [isTimerRunning, isGameActive, isGameFinished]);
+    }, [state.isTimerRunning, isGameActive, isGameFinished]);
 
-    // Démarrer le timer quand le jeu devient actif
+    // Effet pour démarrer le timer quand le jeu est actif
     useEffect(() => {
         if (isGameActive && !isGameFinished) {
-            setIsTimerRunning(true);
+            setState(prev => ({ ...prev, isTimerRunning: true }));
         } else {
-            setIsTimerRunning(false);
+            setState(prev => ({ ...prev, isTimerRunning: false }));
         }
     }, [isGameActive, isGameFinished]);
 
-    // Mise à jour du score et statut depuis currentPlayer
+    // Effet pour mettre à jour le score et statut depuis currentPlayer
     useEffect(() => {
         if (currentPlayer) {
-            setCurrentScore(currentPlayer.score || 0);
-            setIsWinner(currentPlayer.is_winner || false);
+            setState(prev => ({
+                ...prev,
+                currentScore: currentPlayer.score || 0,
+                isWinner: currentPlayer.is_winner || false
+            }));
 
             if (currentPlayer.status === 'finished' || currentPlayer.is_winner) {
-                setShowVictoryDefeat(true);
-                setIsTimerRunning(false);
+                setState(prev => ({
+                    ...prev,
+                    showVictoryDefeat: true,
+                    isTimerRunning: false
+                }));
             }
         }
     }, [currentPlayer]);
 
-    // Initialiser la combinaison quand la config est prête
-    useEffect(() => {
-        if (difficultyConfig && currentCombination.length === 0) {
-            setCurrentCombination(new Array(difficultyConfig.length).fill(-1));
-        }
-    }, [difficultyConfig, currentCombination.length]);
-
     // ==================== GESTIONNAIRES D'ÉVÉNEMENTS ====================
 
     const handlePositionClick = useCallback((position: number) => {
-        setColorModalPosition(position);
-        setShowColorModal(true);
+        setState(prev => ({
+            ...prev,
+            colorModalPosition: position,
+            showColorModal: true
+        }));
     }, []);
 
     const handleColorSelect = useCallback((colorIndex: number) => {
-        if (colorModalPosition !== undefined) {
-            const newCombination = [...currentCombination];
-            newCombination[colorModalPosition] = colorIndex;
-            setCurrentCombination(newCombination);
-            setSelectedColor(colorIndex);
+        if (state.colorModalPosition !== undefined) {
+            const newCombination = [...state.currentCombination];
+            newCombination[state.colorModalPosition] = colorIndex;
+            setState(prev => ({
+                ...prev,
+                currentCombination: newCombination,
+                selectedColor: colorIndex,
+                showColorModal: false,
+                colorModalPosition: undefined
+            }));
         }
-        setShowColorModal(false);
-        setColorModalPosition(undefined);
-    }, [currentCombination, colorModalPosition]);
+    }, [state.currentCombination, state.colorModalPosition]);
 
     const handleSubmitAttempt = useCallback(async () => {
-        if (!difficultyConfig || isSubmitting || !currentCombination.every(c => c !== -1)) {
+        if (!difficultyConfig || state.isSubmitting || !state.currentCombination.every(c => c !== -1)) {
             return;
         }
 
         try {
-            setIsSubmitting(true);
+            setState(prev => ({ ...prev, isSubmitting: true }));
             showInfo('⏳ Envoi de la tentative...');
 
-            const result = await makeAttempt(currentCombination);
+            const result = await makeAttempt(state.currentCombination);
 
             if (result) {
-                setAttempts(prev => [...prev, result]);
-                showSuccess('✅ Tentative envoyée !');
+                setState(prev => ({
+                    ...prev,
+                    attempts: [...prev.attempts, result],
+                    currentCombination: new Array(difficultyConfig.length).fill(-1)
+                }));
 
-                // Réinitialiser la combinaison pour la prochaine tentative
-                setCurrentCombination(new Array(difficultyConfig.length).fill(-1));
+                showSuccess('✅ Tentative envoyée !');
 
                 // Vérifier si c'est une victoire
                 if (result.is_correct || result.mastermind_completed) {
-                    setIsWinner(true);
-                    setShowVictoryDefeat(true);
-                    setIsTimerRunning(false);
+                    setState(prev => ({
+                        ...prev,
+                        isWinner: true,
+                        showVictoryDefeat: true,
+                        isTimerRunning: false
+                    }));
                     showSuccess('🎉 Mastermind résolu ! Bravo !');
                 }
+            } else {
+                showError('Échec de l\'envoi de la tentative');
             }
-        } catch (error: any) {
-            console.error('Erreur tentative:', error);
-            showError('❌ ' + (error.message || 'Erreur lors de l\'envoi de la tentative'));
+        } catch (err: any) {
+            console.error('Erreur tentative:', err);
+            showError(err.message || 'Erreur lors de la tentative');
         } finally {
-            setIsSubmitting(false);
+            setState(prev => ({ ...prev, isSubmitting: false }));
         }
-    }, [difficultyConfig, isSubmitting, currentCombination, makeAttempt, showInfo, showSuccess, showError]);
+    }, [difficultyConfig, state.isSubmitting, state.currentCombination, makeAttempt, showInfo, showSuccess, showError]);
+
+    const handleSendChatMessage = useCallback((message: string) => {
+        if (!user) return;
+
+        const newMessage: ChatMessage = {
+            id: `${Date.now()}-${Math.random()}`,
+            user_id: user.id,
+            username: user.username,
+            message,
+            timestamp: new Date().toISOString(),
+            type: 'user'
+        };
+
+        setChatMessages(prev => [...prev, newMessage]);
+        showInfo(`💬 Message envoyé: ${message}`);
+    }, [user, showInfo]);
 
     const handleLeaveGame = useCallback(async () => {
         try {
-            setIsLeaving(true);
             await leaveRoom();
-            showSuccess('👋 Vous avez quitté la partie');
-            navigate('/multiplayer/browse');
-        } catch (error: any) {
-            console.error('Erreur quitter:', error);
-            showError('❌ ' + (error.message || 'Impossible de quitter la partie'));
-        } finally {
-            setIsLeaving(false);
-            setShowLeaveModal(false);
+            navigate('/multiplayer');
+        } catch (err: any) {
+            console.error('Erreur sortie:', err);
+            showError(err.message || 'Erreur lors de la sortie');
         }
-    }, [leaveRoom, navigate, showSuccess, showError]);
+    }, [leaveRoom, navigate, showError]);
 
-    // Gestionnaires pour VictoryDefeatDisplay
-    const handleNewGame = useCallback(() => {
-        navigate('/multiplayer/create');
-    }, [navigate]);
-
-    const handleBackToMenu = useCallback(() => {
-        navigate('/modes');
-    }, [navigate]);
-
-    // Formatage du temps
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
+    const toggleHistorySidebar = useCallback(() => {
+        setState(prev => ({ ...prev, showHistorySidebar: !prev.showHistorySidebar }));
+    }, []);
 
     // ==================== RENDU CONDITIONNEL ====================
 
-    // Loading
-    if (loading || !currentRoom || !difficultyConfig) {
+    if (loading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 loading-container">
-                <div className="flex items-center justify-center h-screen">
-                    <div className="text-center">
-                        <LoadingSpinner size="lg" />
-                        <p className="mt-4 text-gray-600">
-                            Chargement de la partie multijoueur...
-                        </p>
-                    </div>
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center">
+                    <LoadingSpinner size="lg" />
+                    <p className="mt-4 text-gray-600">Chargement de la partie...</p>
                 </div>
             </div>
         );
     }
 
-    // Erreur
-    if (error) {
+    if (!currentRoom || !difficultyConfig) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                <div className="flex items-center justify-center h-screen">
-                    <div className="text-center">
-                        <div className="text-red-500 text-6xl mb-4">⚠️</div>
-                        <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur</h2>
-                        <p className="text-gray-600 mb-4">{error || 'Impossible de charger la partie'}</p>
-                        <button
-                            onClick={() => navigate('/multiplayer/browse')}
-                            className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
-                        >
-                            Retour aux parties
-                        </button>
-                    </div>
+            <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="text-6xl mb-4">❌</div>
+                    <h2 className="text-2xl font-bold text-red-800 mb-2">Partie non trouvée</h2>
+                    <p className="text-red-600 mb-4">La partie que vous cherchez n'existe pas ou n'est plus disponible.</p>
+                    <button
+                        onClick={() => navigate('/multiplayer')}
+                        className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                        Retour au multijoueur
+                    </button>
                 </div>
             </div>
         );
     }
 
-    // Jeu non actif
-    if (!isGameActive && !isGameFinished) {
+    if (!isGameActive) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                <div className="flex items-center justify-center h-screen">
-                    <div className="text-center">
-                        <div className="text-6xl mb-4">⏳</div>
-                        <h2 className="text-xl font-semibold text-gray-800 mb-2">Partie en attente</h2>
-                        <p className="text-gray-600 mb-4">La partie n'a pas encore commencé.</p>
-                        <button
-                            onClick={() => navigate(`/multiplayer/rooms/${roomCode}/lobby`)}
-                            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                            🏠 Retour au salon
-                        </button>
-                    </div>
+            <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-100 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="text-6xl mb-4">⏳</div>
+                    <h2 className="text-2xl font-bold text-orange-800 mb-2">Partie en attente</h2>
+                    <p className="text-orange-600 mb-4">La partie n'a pas encore commencé.</p>
+                    <button
+                        onClick={() => navigate(`/multiplayer/lobby/${roomCode}`)}
+                        className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                        Retour au lobby
+                    </button>
                 </div>
             </div>
         );
     }
 
-    // ==================== RENDU PRINCIPAL - STYLE IDENTIQUE AU SOLO ====================
+    // ==================== RENDU PRINCIPAL ====================
 
     return (
-        <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex overflow-hidden">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+            <Header />
 
-            {/* Zone de jeu principale - PARTIE GAUCHE (identique au solo) */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-
-                {/* Header intégré - MÊME STYLE QUE LE SOLO */}
-                <div className="bg-white/90 backdrop-blur-sm border-b border-gray-200 p-4">
+            <div className={`container mx-auto px-4 py-6 transition-all duration-300 ${
+                state.showHistorySidebar ? 'pr-96' : ''
+            }`}>
+                {/* Header de la partie */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
                     <div className="flex items-center justify-between">
-                        {/* Logo/Titre */}
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-800 flex items-center">
+                                🎮 Partie Multijoueur
+                                <span className="ml-2 text-lg text-blue-600">#{roomCode}</span>
+                            </h1>
+                            <p className="text-gray-600 mt-1">
+                                {difficultyConfig.description} • Mastermind {(currentPlayer?.current_mastermind as number) || 1}
+                            </p>
+                        </div>
                         <div className="flex items-center space-x-4">
-                            <h1 className="text-xl font-bold text-blue-600">Quantum Mastermind</h1>
-                            <div className="text-sm text-gray-600">
-                                Multijoueur - {user?.username} - Room {roomCode}
-                            </div>
-                        </div>
-
-                        {/* Actions du header */}
-                        <div className="flex items-center space-x-3">
                             <button
-                                onClick={() => setShowChat(!showChat)}
-                                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                                    showChat
-                                        ? 'bg-green-600 text-white'
-                                        : 'bg-green-500 text-white hover:bg-green-600'
-                                }`}
+                                onClick={toggleHistorySidebar}
+                                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center"
                             >
-                                💬 Chat {showChat ? '🔼' : '🔽'}
-                            </button>
-
-                            <button
-                                onClick={() => setShowLeaveModal(true)}
-                                disabled={isLeaving}
-                                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 disabled:opacity-50 text-sm"
-                            >
-                                {isLeaving ? '⏳ Sortie...' : '🚪 Quitter'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Contenu de jeu scrollable - MÊME STYLE QUE LE SOLO */}
-                <div className="flex-1 overflow-auto p-6">
-                    <div className="max-w-3xl mx-auto space-y-6">
-
-                        {/* En-tête de la partie - MÊME STYLE QUE LE SOLO */}
-                        <div className="bg-white rounded-lg shadow-lg p-6 game-card">
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-gray-800">
-                                        🎯 Partie Multijoueur - {roomCode}
-                                    </h1>
-                                    <p className="text-gray-600">
-                                        Difficulté: {currentRoom.difficulty} • {difficultyConfig.colors} couleurs • {difficultyConfig.length} positions
-                                    </p>
-                                </div>
-
-                                <div className="flex items-center space-x-6">
-                                    {/* Timer */}
-                                    <div className="text-center">
-                                        <div className="text-2xl font-mono font-bold text-blue-600">
-                                            {formatTime(timer)}
-                                        </div>
-                                        <div className="text-xs text-gray-500">Temps</div>
-                                    </div>
-
-                                    {/* Score */}
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold text-purple-600">
-                                            {currentScore}
-                                        </div>
-                                        <div className="text-xs text-gray-500">Score</div>
-                                    </div>
-
-                                    {/* Tentatives */}
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold text-orange-600">
-                                            {attempts.length} / {difficultyConfig.attempts}
-                                        </div>
-                                        <div className="text-xs text-gray-500">Tentatives</div>
-                                    </div>
-
-                                    {/* Position dans le jeu */}
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold text-green-600">
-                                            #{players.findIndex(p => p.user_id === user?.id) + 1}
-                                        </div>
-                                        <div className="text-xs text-gray-500">Position</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Status et actions */}
-                            <div className="flex items-center justify-between">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                    isGameActive
-                                        ? 'bg-green-100 text-green-800'
-                                        : isGameFinished
-                                            ? 'bg-blue-100 text-blue-800'
-                                            : 'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                    {isGameActive ? '🟢 En cours' : isGameFinished ? '🏁 Terminé' : '⏳ En attente'}
-                                </span>
-
-                                <div className="flex items-center space-x-2">
-                                    <span className="text-sm text-gray-600">
-                                        {players.length} joueur{players.length > 1 ? 's' : ''} connecté{players.length > 1 ? 's' : ''}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Plateau de jeu - IDENTIQUE AU SOLO */}
-                        <div className="bg-white rounded-lg shadow-lg p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-xl font-semibold text-gray-800">
-                                    🎲 Votre combinaison
-                                </h2>
-                                <button
-                                    onClick={handleSubmitAttempt}
-                                    disabled={
-                                        isSubmitting ||
-                                        !currentCombination.every(c => c !== -1) ||
-                                        !isGameActive ||
-                                        isGameFinished
-                                    }
-                                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-                                >
-                                    {isSubmitting ? (
-                                        <>
-                                            <LoadingSpinner size="sm" />
-                                            <span>Envoi...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span>🎯</span>
-                                            <span>Valider</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-
-                            <GameBoard
-                                combination={currentCombination}
-                                onPositionClick={handlePositionClick}
-                                difficultyConfig={difficultyConfig}
-                                isGameActive={isGameActive && !isGameFinished}
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Panneau latéral droit - HISTORIQUE + JOUEURS */}
-            <div className="w-96 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <h2 className="text-lg font-semibold text-gray-800">
-                        📊 Informations de partie
-                    </h2>
-                </div>
-
-                <div className="flex-1 overflow-auto p-4 space-y-6">
-                    {/* Affichage des joueurs multijoueur */}
-                    <MultiplayerPlayersDisplay
-                        players={players}
-                        currentUserId={user?.id}
-                        currentPlayer={currentPlayer}
-                    />
-
-                    {/* Historique des tentatives multijoueur */}
-                    <MultiplayerAttemptHistory
-                        attempts={attempts}
-                        currentPlayer={currentPlayer}
-                        difficultyConfig={difficultyConfig}
-                    />
-                </div>
-            </div>
-
-            {/* Chat multijoueur */}
-            <MultiplayerChat
-                isVisible={showChat}
-                onToggle={() => setShowChat(!showChat)}
-                roomCode={roomCode || ''}
-            />
-
-            {/* Modals */}
-            {showColorModal && difficultyConfig && (
-                <ColorSelectionModal
-                    isOpen={showColorModal}
-                    onClose={() => setShowColorModal(false)}
-                    onColorSelect={handleColorSelect}
-                    availableColors={difficultyConfig.colors}
-                    colorPalette={difficultyConfig.colorPalette}
-                />
-            )}
-
-            {showLeaveModal && (
-                <Modal
-                    isOpen={showLeaveModal}
-                    onClose={() => setShowLeaveModal(false)}
-                    title="Quitter la partie"
-                >
-                    <div className="text-center">
-                        <div className="text-6xl mb-4">🚪</div>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                            Êtes-vous sûr de vouloir quitter ?
-                        </h3>
-                        <p className="text-gray-600 mb-6">
-                            Vous perdrez votre progression dans cette partie multijoueur.
-                        </p>
-                        <div className="flex justify-center space-x-4">
-                            <button
-                                onClick={() => setShowLeaveModal(false)}
-                                className="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600"
-                            >
-                                Annuler
+                                {state.showHistorySidebar ? '👁️‍🗨️ Masquer' : '📊 Historique'}
                             </button>
                             <button
                                 onClick={handleLeaveGame}
-                                disabled={isLeaving}
-                                className="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 disabled:opacity-50"
+                                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
                             >
-                                {isLeaving ? 'Sortie...' : 'Quitter'}
+                                🚪 Quitter
                             </button>
                         </div>
                     </div>
-                </Modal>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    {/* Score et timer */}
+                    <div className="space-y-4">
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                            <h3 className="font-bold text-gray-800 mb-2">📊 Mon Score</h3>
+                            <div className="text-3xl font-bold text-blue-600">
+                                {state.currentScore} pts
+                            </div>
+                        </div>
+                        <GameTimer
+                            time={state.timer}
+                            isRunning={state.isTimerRunning}
+                        />
+                    </div>
+
+                    {/* Liste des joueurs */}
+                    <div>
+                        <PlayersList
+                            players={players}
+                            currentUserId={user?.id}
+                            creatorId={currentRoom?.creator?.id}
+                            showProgress={true}
+                            compactMode={true}
+                        />
+                    </div>
+
+                    {/* Chat */}
+                    <div>
+                        <SimpleChat
+                            messages={chatMessages}
+                            currentUser={user}
+                            onSendMessage={handleSendChatMessage}
+                        />
+                    </div>
+                </div>
+
+                {/* Plateau de jeu */}
+                <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+                    <GameBoard
+                        combination={state.currentCombination}
+                        onPositionClick={handlePositionClick}
+                        canSubmit={state.currentCombination.every(c => c !== -1) && !state.isSubmitting}
+                        onRemoveColor={(position: number) => {
+                            const newCombination = [...state.currentCombination];
+                            newCombination[position] = -1;
+                            setState(prev => ({
+                                ...prev,
+                                currentCombination: newCombination
+                            }));
+                        }}
+                        onSubmitAttempt={handleSubmitAttempt}
+                        selectedColor={state.selectedColor}
+                    />
+                </div>
+            </div>
+
+            {/* Sidebar d'historique fixe */}
+            {state.showHistorySidebar && (
+                <div className="fixed top-0 right-0 w-96 h-full z-40 history-fixed-fullscreen">
+                    <MultiplayerAttemptHistory
+                        attempts={state.attempts.map(a => ({
+                            id: a.attempt.id,
+                            combination: a.attempt.combination,
+                            correct_positions: a.attempt.correct_positions || a.correct_positions,
+                            correct_colors: a.attempt.correct_colors || a.correct_colors,
+                            attempt_number: a.attempt.attempt_number,
+                            attempt_score: a.attempt.attempt_score,
+                            is_correct: a.attempt.is_correct || a.is_correct,
+                            created_at: a.attempt.created_at,
+                            time_taken: a.attempt.time_taken
+                        }))}
+                        maxAttempts={difficultyConfig.attempts}
+                        combinationLength={difficultyConfig.length}
+                        difficultyConfig={difficultyConfig}
+                        className="h-full"
+                    />
+                </div>
             )}
 
-            {showVictoryDefeat && (
+            {/* Modals */}
+            <ColorSelectionModal
+                isOpen={state.showColorModal}
+                onClose={() => setState(prev => ({ ...prev, showColorModal: false, colorModalPosition: undefined }))}
+                onColorSelect={handleColorSelect}
+                availableColors={difficultyConfig.colors}
+                selectedColor={state.selectedColor}
+                position={state.colorModalPosition}
+            />
+
+            {/* Modal de Victoire/Défaite */}
+            {state.showVictoryDefeat && (
                 <VictoryDefeatDisplay
-                    isOpen={showVictoryDefeat}
-                    onClose={() => setShowVictoryDefeat(false)}
-                    isWinner={isWinner}
-                    attempts={attempts.length}
-                    timeElapsed={timer}
-                    score={currentScore}
-                    onNewGame={handleNewGame}
-                    onBackToMenu={handleBackToMenu}
+                    isWinner={state.isWinner}
+                    playerScore={state.currentScore}
+                    playerAttempts={state.attempts.length}
+                    maxAttempts={difficultyConfig.attempts}
+                    solution={getSolution()} // Solution récupérée seulement en fin de partie
+                    onNewGame={() => {
+                        // Logique pour démarrer une nouvelle partie
+                        setState(prev => ({
+                            ...prev,
+                            showVictoryDefeat: false,
+                            currentCombination: new Array(difficultyConfig.length).fill(-1),
+                            attempts: [],
+                            currentScore: 0,
+                            isWinner: false,
+                            timer: 0
+                        }));
+                        navigate('/multiplayer');
+                    }}
+                    onBackToMenu={handleLeaveGame}
                 />
             )}
         </div>
     );
 };
+
+export default MultiplayerGame;
