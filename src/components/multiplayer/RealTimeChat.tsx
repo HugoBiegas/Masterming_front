@@ -1,3 +1,4 @@
+// src/components/multiplayer/RealTimeChat.tsx - CORRECTION erreur undefined
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -18,10 +19,13 @@ export const RealTimeChat: React.FC<RealTimeChatProps> = ({
     const [isSending, setIsSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // CORRECTION: Sécuriser chatMessages avec une valeur par défaut
+    const safeMessages = chatMessages || [];
+
     // Auto-scroll vers le bas
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chatMessages]);
+    }, [safeMessages]); // CORRECTION: Utiliser safeMessages
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -65,7 +69,8 @@ export const RealTimeChat: React.FC<RealTimeChatProps> = ({
 
             {/* Messages */}
             <div className="h-64 overflow-y-auto p-4 space-y-2 bg-gray-50">
-                {chatMessages.length === 0 ? (
+                {/* CORRECTION: Utiliser safeMessages au lieu de chatMessages */}
+                {safeMessages.length === 0 ? (
                     <div className="text-center text-gray-500 text-sm py-8">
                         <div className="text-2xl mb-2">💬</div>
                         <p>Aucun message pour le moment...</p>
@@ -74,7 +79,7 @@ export const RealTimeChat: React.FC<RealTimeChatProps> = ({
                         </p>
                     </div>
                 ) : (
-                    chatMessages.map((message) => (
+                    safeMessages.map((message: any) => (
                         <div
                             key={message.id}
                             className={`p-2 rounded-lg max-w-xs break-words ${

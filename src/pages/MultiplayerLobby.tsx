@@ -119,9 +119,9 @@ export const MultiplayerLobby: React.FC = () => {
             console.log('🎮 Game became active, redirecting to game room');
             showSuccess('🎮 Redirection vers la partie...');
 
-            // Redirection avec un délai pour laisser le temps aux notifications
+            // CORRECTION: Route corrigée pour correspondre à App.tsx
             setTimeout(() => {
-                navigate(`/multiplayer/game/${roomCode}`, { replace: true });
+                navigate(`/multiplayer/rooms/${roomCode}`, { replace: true });
             }, 1500);
         }
     }, [isGameActive, roomCode, navigate, showSuccess]);

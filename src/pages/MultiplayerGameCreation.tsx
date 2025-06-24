@@ -366,21 +366,83 @@ export const MultiplayerGameCreation: React.FC = () => {
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Nombre maximum de joueurs
                                 </label>
-                                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                                    {[2, 4, 6, 8, 10, 12].map((count) => (
-                                        <button
-                                            key={count}
-                                            type="button"
-                                            onClick={() => handleInputChange('max_players', count)}
-                                            className={`p-3 rounded-lg border-2 text-center transition-all ${
-                                                formData.max_players === count
-                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                    : 'border-gray-200 hover:border-gray-300'
-                                            }`}
-                                        >
-                                            <div className="font-bold">{count}</div>
-                                        </button>
-                                    ))}
+
+                                {/* NOUVEAU: Sélecteur adaptatif selon la taille */}
+                                <div className="space-y-3">
+                                    {/* Choix rapides pour petites parties */}
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-2">Choix rapides:</p>
+                                        <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                                            {[2, 4, 6, 8, 10, 12, 16, 20].map((count) => (
+                                                <button
+                                                    key={count}
+                                                    type="button"
+                                                    onClick={() => handleInputChange('max_players', count)}
+                                                    className={`p-2 rounded-lg border-2 text-center transition-all text-sm ${
+                                                        formData.max_players === count
+                                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                            : 'border-gray-200 hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    <div className="font-bold">{count}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* NOUVEAU: Input numérique pour grandes parties */}
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-2">Ou entrez un nombre personnalisé (max 50):</p>
+                                        <div className="flex items-center space-x-3">
+                                            <input
+                                                type="number"
+                                                min="2"
+                                                max="50"
+                                                value={formData.max_players}
+                                                onChange={(e) => {
+                                                    const value = parseInt(e.target.value);
+                                                    if (value >= 2 && value <= 50) {
+                                                        handleInputChange('max_players', value);
+                                                    }
+                                                }}
+                                                className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            />
+                                            <span className="text-sm text-gray-600">joueurs</span>
+
+                                            {/* NOUVEAU: Indicateur de taille de partie */}
+                                            <span className={`text-xs px-2 py-1 rounded ${
+                                                formData.max_players <= 8
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : formData.max_players <= 20
+                                                        ? 'bg-yellow-100 text-yellow-700'
+                                                        : 'bg-red-100 text-red-700'
+                                            }`}>
+                    {formData.max_players <= 8 ? 'Petite partie'
+                        : formData.max_players <= 20 ? 'Moyenne partie'
+                            : 'Grande partie'}
+                </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* NOUVEAU: Messages d'aide selon la taille */}
+                                <div className="mt-2 text-sm">
+                                    {formData.max_players <= 8 && (
+                                        <p className="text-gray-600">
+                                            ✅ Partie optimale pour une expérience fluide et interactive.
+                                        </p>
+                                    )}
+                                    {formData.max_players > 8 && formData.max_players <= 20 && (
+                                        <p className="text-yellow-700">
+                                            ⚠️ Partie moyenne - Assurez-vous d'avoir une bonne connexion internet.
+                                        </p>
+                                    )}
+                                    {formData.max_players > 20 && (
+                                        <p className="text-red-700">
+                                            🚀 Grande partie - Recommandé pour des événements spéciaux.
+                                            Connexion internet stable requise pour tous les joueurs.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
