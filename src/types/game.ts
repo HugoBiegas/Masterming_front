@@ -16,8 +16,7 @@ export enum Difficulty {
     EASY = "easy",
     MEDIUM = "medium",
     HARD = "hard",
-    EXPERT = "expert",
-    QUANTUM = "quantum"
+    EXPERT = "expert"
 }
 
 export enum GameStatus {
