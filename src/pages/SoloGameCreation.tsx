@@ -12,7 +12,7 @@ export const SoloGameCreation: React.FC = () => {
     const { showError, showSuccess, showWarning } = useNotification();
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState<Partial<GameCreateRequest>>({
-        game_type: GameType.CLASSIC,
+        game_type: GameType.QUANTUM,
         game_mode: GameMode.SINGLE,
         difficulty: Difficulty.MEDIUM,
         quantum_enabled: false,

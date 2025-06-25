@@ -34,8 +34,8 @@ const gameModes: ExtendedGameMode[] = [
         description: 'Rejoignez ou créez des parties multijoueur en ligne',
         icon: '🌐',
         route: '/multiplayer/browse',
-        available: true,
-        isNew: true,
+        available: false,
+        isNew: false,
         difficulty: 'intermediate',
         playerCount: '2-12 joueurs'
     },
@@ -45,7 +45,7 @@ const gameModes: ExtendedGameMode[] = [
         description: 'Créez rapidement une partie multijoueur standard',
         icon: '⚡',
         route: '/multiplayer/create?quick=true',
-        available: true,
+        available: false,
         difficulty: 'intermediate',
         playerCount: '2-6 joueurs'
     },
