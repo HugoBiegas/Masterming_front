@@ -63,7 +63,7 @@ export class MultiplayerWebSocketService {
             this.roomCode = roomCode;
 
             // URL WebSocket - CORRECTION pour votre backend
-            const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:9000'}/ws/multiplayer/${roomCode}?token=${encodeURIComponent(token)}`;
+            const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://54.36.101.158:9000'}/ws/multiplayer/${roomCode}?token=${encodeURIComponent(token)}`;
 
             console.log('🔌 Connexion WebSocket à:', wsUrl);
 
