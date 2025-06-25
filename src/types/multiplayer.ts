@@ -8,6 +8,10 @@ export enum MultiplayerGameType {
     TOURNAMENT = 'tournament'
 }
 
+export interface StandardApiResponse<T> {
+    success: boolean;
+    data: T;
+}
 
 export enum ItemType {
     // Objets bonus pour soi

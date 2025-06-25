@@ -27,6 +27,13 @@ export class MultiplayerWebSocketService {
     private maxReconnectAttempts = 5;
     private isConnecting = false;
     private isAuthenticated = false;
+    private shouldReconnect = true; // NOUVEAU flag
+
+    private readonly HEARTBEAT_INTERVAL = 15000; // 15s au lieu de 30s
+    private readonly CONNECTION_TIMEOUT = 15000; // 15s timeout
+    private readonly RECONNECT_DELAY_BASE = 1000; // Délai de base 1s
+    private readonly MAX_RECONNECT_DELAY = 30000; // Max 30s
+
 
     // Event listeners
     private eventListeners: Map<string, Set<Function>> = new Map();
@@ -46,124 +53,191 @@ export class MultiplayerWebSocketService {
 
     async connect(roomCode: string, token: string): Promise<boolean> {
         if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
-            console.log('🔌 Already connecting or connected');
+            console.log('🔌 Déjà en cours de connexion ou connecté');
             return true;
         }
 
         try {
             this.isConnecting = true;
+            this.shouldReconnect = true; // NOUVEAU
             this.roomCode = roomCode;
 
-            // URL WebSocket backend
-            const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/api/v1/multiplayer/rooms/${roomCode}/ws?token=${encodeURIComponent(token)}`;
+            // URL WebSocket - CORRECTION pour votre backend
+            const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/multiplayer/${roomCode}?token=${encodeURIComponent(token)}`;
 
-            console.log('🔌 Connecting to WebSocket:', wsUrl);
+            console.log('🔌 Connexion WebSocket à:', wsUrl);
 
             this.ws = new WebSocket(wsUrl);
 
             return new Promise((resolve, reject) => {
                 if (!this.ws) {
-                    reject(new Error('WebSocket not initialized'));
+                    reject(new Error('Impossible de créer WebSocket'));
                     return;
                 }
 
+                // NOUVEAU : Timeout plus court et plus strict
+                const timeout = setTimeout(() => {
+                    console.error('⏰ Timeout de connexion WebSocket');
+                    if (this.ws) {
+                        this.ws.close();
+                    }
+                    reject(new Error('Timeout de connexion'));
+                }, this.CONNECTION_TIMEOUT);
+
                 this.ws.onopen = () => {
-                    console.log('✅ WebSocket connected');
+                    clearTimeout(timeout);
+                    console.log('✅ WebSocket connecté');
                     this.isConnected = true;
                     this.isConnecting = false;
                     this.reconnectAttempts = 0;
-
-                    // Démarrer le heartbeat
+                    this.emit('connected', {});
                     this.startHeartbeat();
 
-                    // Émettre l'événement de connexion
-                    this.emit('connected', { roomCode });
+                    // NOUVEAU : Authentification immédiate
+                    this.sendAuthentication();
 
                     resolve(true);
                 };
 
                 this.ws.onmessage = (event) => {
-                    this.handleMessage(event.data);
-                };
-
-                this.ws.onerror = (error) => {
-                    console.error('❌ WebSocket error:', error);
-                    this.emit('error', { error: 'Connection error' });
-                    reject(error);
+                    this.handleMessage(event);
                 };
 
                 this.ws.onclose = (event) => {
-                    console.log('🔌 WebSocket closed:', event.code, event.reason);
-                    this.isConnected = false;
-                    this.isConnecting = false;
-                    this.isAuthenticated = false;
-
-                    this.stopHeartbeat();
-                    this.emit('disconnected', { code: event.code, reason: event.reason });
-
-                    // Tentative de reconnexion si ce n'était pas volontaire
-                    if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-                        this.scheduleReconnect();
-                    }
+                    clearTimeout(timeout);
+                    console.log(`🔌 WebSocket fermé: ${event.code} - ${event.reason}`);
+                    this.handleDisconnection(event);
+                    resolve(false);
                 };
 
-                // Timeout de connexion
-                setTimeout(() => {
-                    if (this.isConnecting) {
-                        reject(new Error('Connection timeout'));
-                    }
-                }, 10000);
+                this.ws.onerror = (error) => {
+                    clearTimeout(timeout);
+                    console.error('❌ Erreur WebSocket:', error);
+                    this.emit('error', { error });
+                    reject(error);
+                };
             });
-
         } catch (error) {
-            console.error('❌ WebSocket connection failed:', error);
             this.isConnecting = false;
             throw error;
         }
     }
 
-    disconnect(): void {
-        console.log('🔌 Disconnecting WebSocket');
-
+    private handleDisconnection(event: CloseEvent): void {
+        this.isConnected = false;
+        this.isConnecting = false;
+        this.isAuthenticated = false;
         this.stopHeartbeat();
+
+        console.log(`🔌 Déconnexion WebSocket: Code=${event.code}, Reason="${event.reason}", Clean=${event.wasClean}`);
+
+        // Émettre l'événement de déconnexion
+        this.emit('disconnected', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+        });
+
+        // NOUVEAU : Analyse des raisons de déconnexion
+        const shouldAttemptReconnect = this.shouldReconnect &&
+            this.reconnectAttempts < this.maxReconnectAttempts &&
+            !this.isManualDisconnect(event.code);
+
+        if (shouldAttemptReconnect) {
+            this.scheduleReconnect();
+        } else {
+            console.log('🚫 Pas de tentative de reconnexion:', {
+                shouldReconnect: this.shouldReconnect,
+                attempts: this.reconnectAttempts,
+                maxAttempts: this.maxReconnectAttempts,
+                code: event.code
+            });
+        }
+    }
+
+    private isManualDisconnect(code: number): boolean {
+        // Codes de déconnexion normale/manuelle
+        return [1000, 1001].includes(code);
+    }
+
+
+    disconnect(): void {
+        console.log('🚪 Déconnexion manuelle WebSocket');
+
+        this.shouldReconnect = false; // Empêcher la reconnexion automatique
 
         if (this.reconnectInterval) {
             clearTimeout(this.reconnectInterval);
             this.reconnectInterval = null;
         }
 
+        this.stopHeartbeat();
+
         if (this.ws) {
-            this.ws.close(1000, 'Disconnect requested');
+            this.ws.close(1000, 'Manual disconnect');
             this.ws = null;
         }
 
         this.isConnected = false;
+        this.isConnecting = false;
         this.isAuthenticated = false;
-        this.roomCode = null;
-        this.userId = null;
+        this.reconnectAttempts = 0;
+    }
+    getConnectionHealth(): {
+        isConnected: boolean;
+        readyState: string;
+        reconnectAttempts: number;
+        lastHeartbeat: number;
+    } {
+        return {
+            isConnected: this.isConnected,
+            readyState: this.ws ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][this.ws.readyState] : 'NULL',
+            reconnectAttempts: this.reconnectAttempts,
+            lastHeartbeat: Date.now()
+        };
     }
 
     private scheduleReconnect(): void {
-        if (this.reconnectInterval) return;
+        if (this.reconnectInterval) {
+            clearTimeout(this.reconnectInterval);
+        }
 
         this.reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
 
-        console.log(`🔄 Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
+        // Calcul du délai avec backoff exponentiel + jitter
+        const baseDelay = this.RECONNECT_DELAY_BASE * Math.pow(2, this.reconnectAttempts - 1);
+        const jitter = Math.random() * 1000; // Ajouter du jitter pour éviter la tempête de reconnexions
+        const delay = Math.min(baseDelay + jitter, this.MAX_RECONNECT_DELAY);
+
+        console.log(`🔄 Reconnexion programmée dans ${Math.round(delay)}ms (tentative ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
         this.reconnectInterval = setTimeout(async () => {
-            this.reconnectInterval = null;
-
-            if (this.roomCode) {
+            if (this.shouldReconnect && this.roomCode) {
+                console.log(`🔄 Tentative de reconnexion ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
                 try {
-                    // Récupérer le token (à adapter selon votre système d'auth)
-                    const token = localStorage.getItem('auth_token') || '';
-                    await this.connect(this.roomCode, token);
+                    // Récupérer le token depuis localStorage/sessionStorage ou contexte
+                    const token = this.getStoredToken();
+                    if (token) {
+                        await this.connect(this.roomCode, token);
+                    } else {
+                        console.error('❌ Token non disponible pour la reconnexion');
+                    }
                 } catch (error) {
-                    console.error('❌ Reconnect failed:', error);
+                    console.error('❌ Échec de reconnexion:', error);
                 }
             }
         }, delay);
+    }
+
+    private getStoredToken(): string | null {
+        // Adapter selon votre système d'auth
+        try {
+            return localStorage.getItem('auth_token') ||
+                sessionStorage.getItem('auth_token') ||
+                null;
+        } catch {
+            return null;
+        }
     }
 
     authenticate(userId: string, token?: string): boolean {
@@ -190,16 +264,37 @@ export class MultiplayerWebSocketService {
     // =====================================================
 
     private startHeartbeat(): void {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+
         this.heartbeatInterval = setInterval(() => {
-            if (this.isConnected) {
-                this.send({
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                const heartbeat = {
                     type: 'heartbeat',
-                    data: {
-                        timestamp: Date.now()
-                    }
-                });
+                    data: { timestamp: Date.now() }
+                };
+
+                try {
+                    this.ws.send(JSON.stringify(heartbeat));
+                    console.log('💓 Heartbeat envoyé');
+                } catch (error) {
+                    console.error('❌ Erreur envoi heartbeat:', error);
+                    // Si on ne peut pas envoyer de heartbeat, considérer comme déconnecté
+                    this.handleConnectionLoss();
+                }
+            } else {
+                console.warn('⚠️ Heartbeat impossible: WebSocket non connecté');
+                this.handleConnectionLoss();
             }
-        }, 30000); // Heartbeat toutes les 30 secondes
+        }, this.HEARTBEAT_INTERVAL);
+    }
+
+    private handleConnectionLoss(): void {
+        if (this.ws) {
+            console.log('🔌 Perte de connexion détectée, fermeture propre');
+            this.ws.close(1006, 'Connection lost');
+        }
     }
 
     private stopHeartbeat(): void {
@@ -207,6 +302,15 @@ export class MultiplayerWebSocketService {
             clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;
         }
+    }
+
+    subscribeToEvent(eventType: string, handler: (data: any) => void): () => void {
+        this.on(eventType, handler);
+
+        // Retourner une fonction de nettoyage
+        return () => {
+            this.off(eventType, handler);
+        };
     }
 
     // =====================================================
@@ -245,13 +349,18 @@ export class MultiplayerWebSocketService {
     // =====================================================
 
     sendChatMessage(message: string): boolean {
-        return this.send({
+        return this.sendMessage({
             type: 'chat_message',
             data: {
-                room_id: this.roomCode,
-                message: message.trim(),
-                timestamp: new Date().toISOString()
+                message,
+                timestamp: Date.now()
             }
+        });
+    }
+    requestGameState(): boolean {
+        return this.sendMessage({
+            type: 'game_state_request',
+            data: {}
         });
     }
 
@@ -300,94 +409,110 @@ export class MultiplayerWebSocketService {
     // GESTION DES MESSAGES ENTRANTS
     // =====================================================
 
-    private handleMessage(rawData: string): void {
+    private handleMessage(event: MessageEvent): void {
         try {
-            // NOUVEAU: Parser avec validation robuste
-            let parsedMessage: any;
+            const message = JSON.parse(event.data);
+            console.log('📨 Message WebSocket reçu:', message);
 
-            try {
-                parsedMessage = JSON.parse(rawData);
-            } catch (parseError) {
-                console.error('❌ Failed to parse WebSocket message:', parseError);
-                console.error('Raw data:', rawData);
-                return;
-            }
-
-            // CORRECTION: Normaliser le format du message
-            const message: WebSocketMessage = {
-                type: parsedMessage.type || 'unknown',
-                data: parsedMessage.data || parsedMessage, // Fallback si data est directement dans le message
-                timestamp: parsedMessage.timestamp || new Date().toISOString(),
-                message_id: parsedMessage.message_id || `msg_${Date.now()}`,
-                room_code: parsedMessage.room_code,
-                user_id: parsedMessage.user_id
+            // Normaliser le format
+            const normalizedMessage = {
+                type: message.type || 'unknown',
+                data: message.data || message,
+                timestamp: message.timestamp || Date.now()
             };
 
-            console.log('📥 Received WebSocket message:', message.type, message.data);
-
-            // CORRECTION: Validation des données avant traitement
-            if (!message.type) {
-                console.warn('⚠️ WebSocket message missing type:', parsedMessage);
-                return;
+            // Gestion spécifique des messages de chat
+            if (normalizedMessage.type === 'chat_message' || normalizedMessage.type === 'chat_broadcast') {
+                console.log('💬 Message de chat détecté:', normalizedMessage.data);
+                this.emit('chat_message', {
+                    id: normalizedMessage.data.message_id || `msg_${Date.now()}`,
+                    user_id: normalizedMessage.data.user_id,
+                    username: normalizedMessage.data.username,
+                    message: normalizedMessage.data.message,
+                    timestamp: normalizedMessage.data.timestamp || new Date().toISOString(),
+                    type: 'user'
+                });
             }
 
-            // Router les messages selon leur type avec gestion des données manquantes
-            switch (message.type) {
+            // Gestion des autres événements
+            switch (normalizedMessage.type) {
                 case 'connection_established':
-                    this.handleConnectionEstablished(message.data || {});
+                    console.log('🔗 Connexion établie');
+                    this.emit('connected', {});
                     break;
-                case 'authentication_success':
-                    this.handleAuthenticationSuccess(message.data || {});
-                    break;
-                case 'authentication_failed':
-                    this.handleAuthenticationFailed(message.data || {});
-                    break;
-                case 'chat_broadcast':
-                case 'chat_message':
-                    this.handleChatMessage(message.data || {});
-                    break;
-                case 'player_connected':
+
                 case 'player_joined':
-                    this.handlePlayerJoined(message.data || {});
+                    console.log('👤 Joueur rejoint:', normalizedMessage.data.username);
+                    this.emit('player_joined', normalizedMessage.data);
                     break;
-                case 'player_disconnected':
+
                 case 'player_left':
-                    this.handlePlayerLeft(message.data || {});
+                    console.log('👤 Joueur parti:', normalizedMessage.data.username);
+                    this.emit('player_left', normalizedMessage.data);
                     break;
+
                 case 'game_started':
-                    this.handleGameStarted(message.data || {});
+                    console.log('🎮 Partie démarrée');
+                    this.emit('game_started', normalizedMessage.data);
                     break;
-                case 'attempt_made':
-                    this.handleAttemptMade(message.data || {});
-                    break;
-                case 'room_state':
-                    this.handleRoomState(message.data || {});
-                    break;
-                case 'heartbeat':
-                    // Heartbeat reçu, connection OK
-                    this.handleHeartbeat(message.data || {});
-                    break;
+
                 case 'error':
-                    this.handleError(message.data || {});
+                    console.error('❌ Erreur WebSocket:', normalizedMessage.data);
+                    this.emit('error', normalizedMessage.data);
                     break;
+
                 default:
-                    console.log('📥 Unhandled message type:', message.type);
+                    console.log('📄 Événement générique:', normalizedMessage.type);
+                    this.emit(normalizedMessage.type, normalizedMessage.data);
                     break;
             }
 
             // Émettre l'événement générique
-            this.emit('message', message);
-            this.emit(message.type, message.data || {});
+            this.emit('message', normalizedMessage);
 
         } catch (error) {
-            console.error('❌ Failed to handle WebSocket message:', error);
-            console.error('Raw data:', rawData);
+            console.error('❌ Erreur parsing message WebSocket:', error, event.data);
         }
     }
+
+    private handleSystemMessage(data: any): void {
+        console.log('📢 System message:', data.message);
+        this.emit('system_message', data);
+    }
+
+
+    private handleGameFinished(data: any): void {
+        console.log('🏆 Game finished. Winner:', data.winner_username);
+        this.emit('game_finished', data);
+        this.emit('game_state_changed', { status: 'finished', ...data });
+    }
+
     private handleConnectionEstablished(data: any): void {
-        console.log('✅ Connection established:', data);
+        console.log('🔗 Connection established:', data);
         this.emit('connection_established', data);
     }
+
+    private handleGameStateUpdate(data: any): void {
+        console.log('🔄 Game state update');
+        this.emit('game_state_update', data);
+        this.emit('game_state_changed', data);
+    }
+
+
+    private handleAttemptSubmitted(data: any): void {
+        console.log('🎯 Attempt submitted by:', data.username);
+        this.emit('attempt_submitted', data);
+        this.emit('game_progress', data);
+
+        if (data.is_solution) {
+            this.emit('solution_found', data);
+        }
+
+        if (data.game_finished) {
+            this.emit('game_finished', data);
+        }
+    }
+
 
     private handleAuthenticationSuccess(data: any): void {
         console.log('✅ Authentication successful:', data);
@@ -413,65 +538,35 @@ export class MultiplayerWebSocketService {
         }
     }
 
-    private handleChatMessage(data: any): void {
-        // CORRECTION: Validation et normalisation des données de chat
-        const chatMessage: ChatMessage = {
-            id: data.message_id || `${data.user_id || 'unknown'}-${Date.now()}`,
-            user_id: data.user_id || 'system',
-            username: data.username || 'Utilisateur',
-            message: data.message || '',
-            timestamp: data.timestamp || new Date().toISOString(),
-            type: data.type || 'user'
-        };
-
-        if (chatMessage.message.trim()) {
-            this.emit('chat_message', chatMessage);
-        }
+    private handleQuantumHintUsed(data: any): void {
+        console.log('⚛️ Quantum hint used by:', data.username);
+        this.emit('quantum_hint_used', data);
+        this.emit('quantum_event', data);
     }
 
+    private handleChatMessage(data: any): void {
+        console.log('💬 Chat message from:', data.username);
+        this.emit('chat_message', data);
+        this.emit('chat_broadcast', data);
+    }
+
+
     private handlePlayerJoined(data: any): void {
-        console.log('👤 Player joined:', data);
-
-        // CORRECTION: Normaliser les données du joueur
-        const playerData = {
-            user_id: data.user_id || data.userId,
-            username: data.username || data.user_name || 'Joueur',
-            timestamp: data.timestamp || new Date().toISOString(),
-            connections_count: data.connections_count || 0,
-            ...data
-        };
-
-        this.emit('player_joined', playerData);
+        console.log('👤 Player joined:', data.username);
+        this.emit('player_joined', data);
+        this.emit('players_updated', data);
     }
 
     private handlePlayerLeft(data: any): void {
-        console.log('👤 Player left:', data);
-
-        // CORRECTION: Normaliser les données du joueur qui part
-        const playerData = {
-            user_id: data.user_id || data.userId,
-            username: data.username || data.user_name || 'Joueur',
-            timestamp: data.timestamp || new Date().toISOString(),
-            connections_count: data.connections_count || 0,
-            ...data
-        };
-
-        this.emit('player_left', playerData);
+        console.log('👤 Player left:', data.username, 'Reason:', data.reason);
+        this.emit('player_left', data);
+        this.emit('players_updated', data);
     }
 
     private handleGameStarted(data: any): void {
-        console.log('🎮 Game started:', data);
-
-        // CORRECTION: Normaliser les données de démarrage de jeu
-        const gameData = {
-            room_code: data.room_code || data.roomCode || this.roomCode,
-            started_at: data.started_at || data.startedAt || new Date().toISOString(),
-            current_mastermind: data.current_mastermind || data.currentMastermind || 1,
-            timestamp: data.timestamp || new Date().toISOString(),
-            ...data
-        };
-
-        this.emit('game_started', gameData);
+        console.log('🎮 Game started:', data.game_id);
+        this.emit('game_started', data);
+        this.emit('game_state_changed', { status: 'playing', ...data });
     }
 
     private handleAttemptMade(data: any): void {
@@ -505,16 +600,8 @@ export class MultiplayerWebSocketService {
 
     private handleError(data: any): void {
         console.error('❌ WebSocket error received:', data);
-
-        // CORRECTION: Normaliser les données d'erreur
-        const errorData = {
-            message: data.message || data.error || 'Erreur WebSocket inconnue',
-            code: data.code || data.error_code || 'UNKNOWN_ERROR',
-            timestamp: data.timestamp || new Date().toISOString(),
-            ...data
-        };
-
-        this.emit('error', errorData);
+        this.emit('websocket_error', data);
+        this.emit('error', data);
     }
 
     // =====================================================
@@ -527,6 +614,46 @@ export class MultiplayerWebSocketService {
         }
         this.eventListeners.get(event)!.add(callback);
     }
+
+    private sendAuthentication(): void {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            const authMessage = {
+                type: 'authenticate',
+                data: {
+                    room_code: this.roomCode,
+                    timestamp: Date.now()
+                }
+            };
+
+            console.log('🔐 Envoi authentification:', authMessage);
+            this.ws.send(JSON.stringify(authMessage));
+        }
+    }
+
+    sendHeartbeat(): boolean {
+        return this.sendMessage({
+            type: 'heartbeat',
+            data: { timestamp: Date.now() }
+        });
+    }
+
+    sendMessage(message: WebSocketMessage): boolean {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            console.warn('⚠️ Cannot send message: WebSocket not connected');
+            return false;
+        }
+
+        try {
+            const messageString = JSON.stringify(message);
+            this.ws.send(messageString);
+            console.log('📤 Sent message:', message);
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to send message:', error);
+            return false;
+        }
+    }
+
 
     off(event: string, callback: Function): void {
         const listeners = this.eventListeners.get(event);

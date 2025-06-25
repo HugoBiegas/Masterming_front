@@ -427,18 +427,33 @@ export const useWebSocket = (roomCode?: string): WebSocketHookReturn => {
     // ===============================================
 
     const sendChatMessage = useCallback((message: string): boolean => {
-        if (!wsServiceRef.current?.isConnected || !user || !message.trim()) {
-            console.warn('Impossible d\'envoyer le message de chat:', {
-                connected: wsServiceRef.current?.isConnected,
-                user: !!user,
-                message: !!message.trim()
-            });
+        console.log('🗨️ Tentative envoi message:', {
+            message: message.trim(),
+            connected: wsServiceRef.current?.isConnected,
+            roomCode,
+            user: user?.username
+        });
+
+        if (!wsServiceRef.current?.isConnected) {
+            console.warn('❌ WebSocket non connecté');
+            showError?.('Chat non connecté');
+            return false;
+        }
+
+        if (!user) {
+            console.warn('❌ Utilisateur non authentifié');
+            return false;
+        }
+
+        if (!message.trim()) {
+            console.warn('❌ Message vide');
             return false;
         }
 
         try {
+            // NOUVEAU FORMAT UNIFIÉ selon votre backend
             const chatEvent = {
-                type: 'chat_message',
+                type: 'chat_message',  // Type simple et cohérent
                 data: {
                     message: message.trim(),
                     user_id: user.id,
@@ -448,19 +463,36 @@ export const useWebSocket = (roomCode?: string): WebSocketHookReturn => {
                 }
             };
 
+            console.log('📤 Envoi événement chat:', chatEvent);
+
             const success = wsServiceRef.current.send(chatEvent);
 
             if (success) {
+                console.log('✅ Message envoyé avec succès');
                 setStats(prev => ({ ...prev, messagesSent: prev.messagesSent + 1 }));
-                console.log('📤 Message de chat envoyé:', message.trim());
+
+                // OPTIONNEL : Ajouter immédiatement le message localement pour une meilleure UX
+                const localMessage: ChatMessage = {
+                    id: `local_${Date.now()}`,
+                    user_id: user.id,
+                    username: user.username,
+                    message: message.trim(),
+                    timestamp: new Date().toISOString(),
+                    type: 'user'
+                };
+                setChatMessages(prev => [...prev, localMessage]);
+            } else {
+                console.error('❌ Échec envoi message via WebSocket');
+                showError?.('Impossible d\'envoyer le message');
             }
 
             return success;
         } catch (error) {
-            console.error('❌ Erreur envoi message chat:', error);
+            console.error('❌ Erreur lors de l\'envoi du message:', error);
+            showError?.('Erreur lors de l\'envoi du message');
             return false;
         }
-    }, [user, roomCode]);
+    }, [user, roomCode, showError]);
 
     const sendMessage = useCallback((message: any): boolean => {
         if (wsServiceRef.current?.isConnected) {
@@ -526,18 +558,49 @@ export const useWebSocket = (roomCode?: string): WebSocketHookReturn => {
 
     // Effet de connexion automatique
     useEffect(() => {
-        unmountedRef.current = false;
+        if (!wsServiceRef.current || !roomCode) return;
 
-        if (roomCode && user && !isConnected && !isConnecting) {
-            console.log('🚀 Connexion automatique déclenchée');
-            connect();
-        }
+        // Log périodique de l'état de la connexion pour debug
+        const healthCheck = setInterval(() => {
+            const health = wsServiceRef.current?.getConnectionHealth?.();
+            if (health) {
+                console.log('🏥 WebSocket Health Check:', health);
+
+                // Si la connexion semble morte mais l'état dit connecté, forcer la reconnexion
+                if (health.isConnected && health.readyState === 'CLOSED') {
+                    console.warn('⚠️ État incohérent détecté, reconnexion forcée');
+                    forceReconnect();
+                }
+            }
+        }, 30000); // Check toutes les 30 secondes
 
         return () => {
-            // Ne pas nettoyer immédiatement au démontage pour éviter les coupures
+            clearInterval(healthCheck);
         };
-    }, [roomCode, user?.id]); // Dépendances minimales
+    }, [roomCode, forceReconnect]);
 
+    // Détection de visibilité de la page
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && wsServiceRef.current) {
+                console.log('👁️ Page redevenue visible, vérification connexion');
+
+                // Vérifier si la connexion est toujours active après un délai
+                setTimeout(() => {
+                    if (wsServiceRef.current && !isConnected) {
+                        console.log('🔄 Reconnexion après retour de visibilité');
+                        forceReconnect();
+                    }
+                }, 1000);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [isConnected, forceReconnect]);
     // Effet de nettoyage final
     useEffect(() => {
         return () => {
